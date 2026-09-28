@@ -5,7 +5,7 @@ class AgentRunner
   class AgentError < StandardError; end
   class TaskStopped < StandardError; end
 
-  MAX_MODEL_STEPS = 32
+  MAX_MODEL_STEPS = 64
   ALLOWED_TOOLS = %w[list_files read_file search_code apply_patch create_file delete_file run_command run_tests git_status git_diff git_log].freeze
   MUTATING_TOOLS = %w[apply_patch create_file delete_file run_command].freeze
   TOOL_CAPABILITIES = {
@@ -44,6 +44,8 @@ class AgentRunner
     - run_command and delete_file require human approval. Approval never bypasses runtime restrictions.
     - Network, git push, deployment, package installation, destructive shell actions, and host access are unavailable.
     - If a tool fails, inspect its observation and choose a safe next step.
+    - Always begin with list_files. Projects may contain a nested application directory (for example server/); use the actual directory containing Gemfile/spec before reading or running tests.
+    - Never repeat an identical failed tool call. Correct the relative path from the error or list the directory first.
     - All edits are isolated proposals. The user must accept the result to update the original repository.
   PROMPT
 
@@ -121,7 +123,7 @@ class AgentRunner
 
   def initial_messages
     [{ "role" => "system", "content" => SYSTEM_PROMPT },
-     { "role" => "user", "content" => "Project: #{@task.repository.name}\nWorkspace: isolated snapshot of the project’s current saved files, including uncommitted changes. Its Git baseline belongs to this task; the source folder may not use Git.\nTask: #{@task.user_request}" }]
+     { "role" => "user", "content" => "Project: #{@task.repository.name}\nWorkspace: isolated snapshot of the project’s current saved files, including uncommitted changes. Its Git baseline belongs to this task; the source folder may not use Git. A repository can contain a nested app directory; discover it before using paths.\nTask: #{@task.user_request}" }]
   end
 
   def normalize_messages(messages)
