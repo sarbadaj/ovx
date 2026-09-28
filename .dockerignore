@@ -1,0 +1,7 @@
+**
+!docker/
+!docker/**
+!examples/
+!examples/demo-rails/
+!examples/demo-rails/Gemfile
+!examples/demo-rails/Gemfile.lock

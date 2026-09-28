@@ -1,0 +1,33 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ovx
+      POSTGRES_PASSWORD: ovx
+      POSTGRES_DB: ovx_development
+    ports:
+      - "127.0.0.1:${OVX_POSTGRES_PORT:-55432}:5432"
+    volumes:
+      - ovx-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ovx -d ovx_development"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:${OVX_REDIS_PORT:-56379}:6379"
+    volumes:
+      - ovx-redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  ovx-postgres:
+  ovx-redis:

@@ -1,0 +1,42 @@
+:root { color-scheme: light dark; }
+body { color: var(--vscode-foreground); font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); padding: 14px 14px 24px; line-height: 1.5; }
+header { margin-bottom: 16px; }
+.brand { font-size: 22px; font-weight: 700; letter-spacing: -.5px; margin-bottom: 5px; }
+.brand span { font-size: 10px; font-weight: 500; letter-spacing: 1.4px; margin-left: 8px; color: var(--vscode-descriptionForeground); }
+#connection { font-size: 11px; overflow-wrap: anywhere; }
+.connected { color: var(--vscode-testing-iconPassed, #4da56b); }
+.muted, footer { color: var(--vscode-descriptionForeground); font-size: 11px; }
+.notice { background: var(--vscode-textBlockQuote-background); border-left: 2px solid var(--vscode-textLink-foreground); padding: 9px 10px; margin-bottom: 12px; font-size: 12px; }
+.error { color: var(--vscode-errorForeground); border: 1px solid var(--vscode-inputValidation-errorBorder); background: var(--vscode-inputValidation-errorBackground); padding: 8px; margin: 10px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+label { display: block; margin: 12px 0 5px; font-weight: 600; }
+input, select, textarea { box-sizing: border-box; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, transparent); width: 100%; padding: 7px 8px; font: inherit; }
+select { text-overflow: ellipsis; }
+textarea { resize: vertical; min-height: 100px; line-height: 1.5; margin-bottom: 8px; }
+button { cursor: pointer; border: 1px solid transparent; border-radius: 3px; background: var(--vscode-button-background); color: var(--vscode-button-foreground); padding: 6px 10px; font: inherit; line-height: 1.4; }
+button:hover { background: var(--vscode-button-hoverBackground); }
+button.secondary { background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
+button.secondary:hover { background: var(--vscode-button-secondaryHoverBackground); }
+button:disabled { cursor: default; opacity: .5; }
+:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 6px; }
+.small { font-size: 11px; padding: 3px 6px; }
+.shortcut { margin-left: 6px; white-space: nowrap; }
+#folderPath { margin: 5px 0 0; overflow-wrap: anywhere; }
+section { margin-top: 20px; }
+h2 { font-size: 12px; font-weight: 600; margin: 0 0 8px; }
+.section-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.section-title h2 { margin: 0; }
+.badge { font-size: 10px; padding: 2px 7px; border-radius: 9px; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); }
+#task { border-top: 1px solid var(--vscode-panel-border); margin-top: 20px; padding-top: 16px; }
+.preserve { white-space: pre-wrap; overflow-wrap: anywhere; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--vscode-textCodeBlock-background); font: 11px/1.5 var(--vscode-editor-font-family, monospace); padding: 8px; margin: 6px 0; max-height: 420px; overflow: auto; }
+.approval { border: 1px solid var(--vscode-inputValidation-warningBorder, #bd8b1c); padding: 10px; margin-bottom: 12px; border-radius: 3px; }
+.approval p { margin: 6px 0; }
+.file { display: block; text-align: left; width: 100%; background: transparent; color: var(--vscode-textLink-foreground); border-bottom: 1px solid var(--vscode-panel-border); padding: 7px 2px; overflow-wrap: anywhere; }
+.file:hover { background: var(--vscode-list-hoverBackground); }
+details { border-bottom: 1px solid var(--vscode-panel-border); padding: 6px 0; }
+summary { cursor: pointer; font-size: 11px; overflow-wrap: anywhere; }
+.passed summary { color: var(--vscode-testing-iconPassed, #4da56b); }
+footer { border-top: 1px solid var(--vscode-panel-border); padding-top: 12px; margin-top: 24px; }
+button.link { color: var(--vscode-textLink-foreground); background: transparent; padding: 0; font-size: inherit; }
+[hidden] { display: none !important; }

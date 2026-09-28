@@ -1,0 +1,11 @@
+source "https://rubygems.org"
+
+gem "rails", "~> 8.0"
+gem "pg", ">= 1.5"
+gem "puma", ">= 6.0"
+gem "rack-cors"
+gem "sidekiq", "~> 8.0"
+
+group :test do
+  gem "minitest", "~> 5.25"
+end

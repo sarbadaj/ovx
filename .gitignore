@@ -1,0 +1,16 @@
+.env
+.DS_Store
+apps/api/log/*
+apps/api/tmp/*
+apps/api/storage/*
+apps/api/vendor/bundle
+coverage/
+*.log
+
+.ovx/
+apps/api/.bundle/
+apps/vscode/node_modules/
+apps/vscode/*.vsix
+dist/
+__pycache__/
+*.pyc

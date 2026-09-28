@@ -1,329 +1,106 @@
-# OVX
+# OVX — local coding agent for VS Code
 
-**Open, provider-independent coding agent for repository-aware software engineering.**
-
-OVX is an Ompirit Software project for building a Codex-like developer experience without depending on a single proprietary model provider. OVX is designed to understand repositories, plan changes, use validated tools, edit code, execute tests inside isolated environments, present diffs, and require human approval before sensitive actions.
-
-> **Project status:** Product architecture is defined. Core execution, security, recovery, data-model, and evaluation specifications are ready for MVP implementation.
-
-## Core architecture rule
+OVX runs coding tasks on your machine, prepares changes in an isolated Git workspace, runs tests in Docker, and presents the result in VS Code for acceptance or rejection. The model proposes structured actions; Rails and the Go runtime control their execution.
 
 ```text
-Model        = proposes
-Rails Agent  = orchestrates
-Go Runtime   = validates and executes
-Sandbox      = contains
-PostgreSQL   = remembers
-Human        = approves risky actions
-Tests        = determine completion
+VS Code + OVX extension
+          │ authenticated localhost API
+          ▼
+Rails agent ─── PostgreSQL + Redis / Sidekiq
+    │                           │
+    ├── local llama.cpp model   └── Go runtime
+    │                                  │
+    └── plan / tool actions            ▼
+                              isolated Git workspace
+                              + Docker test sandbox
+                                        │
+                              tests → diff → Accept
+                                        │
+                              your original repository
 ```
 
-## What OVX should do
+The delivered interface is the VS Code extension and CLI. Read [implementation status](docs/IMPLEMENTATION_STATUS.md) for scope and [validation results](VALIDATION.md) for observed test results. The documents under [`docs/docs/`](docs/docs/) preserve the broader reference design and future roadmap.
 
-A developer should be able to open a repository and ask OVX to perform a real engineering task, for example:
+## Set up and start
 
-> Fix the failing specs in `UsersController`. Do not modify the public API. Run the relevant tests and show me the diff before committing.
+Run commands from the OVX checkout. Service hosts are macOS or Linux; the managed model installer targets Apple Silicon macOS. Prerequisites: Python **3.12+**, Git, Docker with Compose, Ruby 3.2+ and Bundler, Go 1.23+, ripgrep, Node.js 20+, npm, and VS Code. On Linux, install `llama-server` separately before `setup-model`; the automatic native runtime download supports Apple Silicon macOS. Start Docker Desktop/Engine first. Install VS Code’s `code` command in your shell for CLI extension installation.
 
-OVX should:
-
-1. create an isolated task workspace;
-2. inspect the repository and retrieve only relevant context;
-3. create a concise plan;
-4. ask a model to propose the next action;
-5. validate that action against OVX policy;
-6. execute approved tools through the runtime service;
-7. run targeted tests and quality checks;
-8. stop for approval before risky or external operations;
-9. show changed files, patches, test results, and remaining risks;
-10. allow accept, reject, retry, resume, or manual edits;
-11. optionally create a commit or pull request after approval.
-
-## Architecture
-
-```text
-┌─────────────────────────────────────────────┐
-│        OVX Desktop UI / Future CLI          │
-│       Tauri + React + TypeScript            │
-└──────────────────────┬──────────────────────┘
-                       │
-                       ▼
-┌─────────────────────────────────────────────┐
-│            Rails Control Plane              │
-│ Tasks • Agent State • Context • Approvals   │
-│ Events • Policies • Repository Metadata     │
-└───────────────┬───────────────────┬─────────┘
-                │                   │
-                │ model requests    │ validated tool requests
-                ▼                   ▼
-┌──────────────────────────┐  ┌──────────────────────────────┐
-│      Model Gateway       │  │      OVX Runtime Service     │
-│ llama.cpp • vLLM •      │  │             Go               │
-│ compatible providers     │  │ validation • limits • I/O   │
-└──────────────────────────┘  └───────────────┬──────────────┘
-                                              │
-                                              ▼
-                                  ┌───────────────────────────┐
-                                  │      Docker Sandbox       │
-                                  │ Repository • Tests • Git  │
-                                  │ Shell • Build tools       │
-                                  └───────────────────────────┘
+```sh
+./bin/ovx doctor
+./bin/ovx setup
+./bin/ovx setup-model
+./bin/ovx start
+./bin/ovx status
+./bin/ovx install-extension
 ```
 
-The model never receives unrestricted host access. It proposes structured actions. Rails orchestrates the task and applies policy. The Go runtime validates execution constraints. The sandbox contains untrusted repository execution.
+`setup` creates a private `.env` with separate API/runtime tokens, starts PostgreSQL and Redis, installs Rails dependencies, prepares the database, and builds the runtime and demo sandbox images. Setup and model installation download dependencies; ordinary tasks use the installed components.
 
-## MVP goals
+`setup-model` installs checksum-verified **llama.cpp b11207** and **Qwen2.5-Coder-3B-Instruct Q4_K_M** and configures managed local inference. `start` manages the model, runtime, API, and worker together. A 3B model on an 8 GB machine is a constrained starting point: use small, targeted tasks and inspect tests and diffs carefully. Larger Rails changes may exceed its reasoning, context, or available-memory capacity. A configured model does not guarantee that an arbitrary coding task will succeed.
 
-- Open a local repository
-- Create an isolated workspace
-- Chat with repository context
-- Browse, search, and read files
-- Apply structured patches
-- Run commands and tests in a sandbox
-- Display Git status and diffs
-- Plan and execute multi-step coding tasks
-- Persist task state and tool execution
-- Resume interrupted tasks safely
-- Require approval for sensitive actions
-- Use local or self-hosted coding models
-- Persist audit events and outcomes
+The generated VSIX is [`apps/vscode/dist/ovx-local-0.1.1.vsix`](apps/vscode/dist/ovx-local-0.1.1.vsix). If `code` is unavailable, run `./bin/ovx package-extension`, then use **Extensions → … → Install from VSIX**. Reload VS Code when prompted.
 
-### Initial tool set
+## Use the extension
 
-```text
-list_files
-read_file
-search_code
-apply_patch
-run_command
-run_tests
-git_status
-git_diff
-git_log
+1. Open the project folder in VS Code. Save editor buffers before starting a task; OVX now snapshots saved files, including uncommitted and non-Git projects.
+2. The selected folder is enrolled explicitly when you connect. No commit or broad workspace-root allowlist is required.
+3. Trust the workspace in VS Code. Run **OVX: Choose OVX Installation** and select this OVX checkout.
+4. Run **OVX: Import Token from OVX Installation**, or use **OVX: Set API Token** with `OVX_API_TOKEN` from that installation’s `.env`.
+5. Open the OVX activity bar, connect to `http://127.0.0.1:3000`, and select the repository when using a multi-root workspace.
+6. Submit **“Fix this failing RSpec test. Keep the public API unchanged, run the relevant tests, and inspect the diff.”**
+
+The sidebar shows task history, plans, tool events, test output, pending approvals, and changed files. Select a file for its native before/after diff. **Accept changes** applies the reviewed patch; **Reject changes** removes the task workspace. **Retry / Resume safely** resumes eligible failed or interrupted tasks; **Run again** creates a fresh task. **Cancel task** requests execution cancellation.
+
+Source files remain unchanged until acceptance. OVX protects unrelated edits when applying a reviewed snapshot patch; accepted edits remain uncommitted. Tokens live in VS Code SecretStorage; repository settings cannot redirect them or select a launcher. See the [extension guide](apps/vscode/README.md) for all controls and remote extension-host behavior.
+
+For projects outside OVX’s workspace directory, configure narrowly scoped paths:
+
+```dotenv
+OVX_REPOSITORY_ROOTS="/absolute/path/to/my-rails-app:/absolute/path/to/another-project"
 ```
 
-## Technology stack
+## Try the Rails fixture
 
-| Layer | Technology | Purpose |
-|---|---|---|
-| Desktop | Tauri + React + TypeScript | Cross-platform developer UI |
-| Control plane | Ruby on Rails | Agent orchestration, API, approvals, persistence |
-| Background jobs | Sidekiq + Redis | Indexing and long-running work |
-| Database | PostgreSQL | Tasks, events, repository metadata, audit data |
-| Agent engine | Explicit state machine | Predictable resumable execution |
-| Runtime | Go | Safe tool execution and process control |
-| Sandbox | Docker initially | Repository isolation and resource limits |
-| Search | ripgrep + Tree-sitter | Lexical and symbol-aware retrieval |
-| Local inference | llama.cpp | Local development and Apple Silicon |
-| GPU inference | vLLM | Higher-throughput self-hosted inference |
-| Model integration | ModelAdapter | Provider independence |
-
-## Durable execution
-
-Tool lifecycle:
-
-```text
-requested
-authorized
-started
-completed
-failed
-cancelled
-unknown
+```sh
+./bin/ovx demo rails
 ```
 
-Non-idempotent actions such as `git push`, pull-request creation, deployment, or infrastructure changes must never be blindly replayed after an ambiguous crash.
+Open the printed repository path in VS Code. Type `run full rspec` to run the complete suite in the detected project folder (for `SmartGuruji`, open the parent and OVX detects `server`). Coding requests still use the agent. This small real Rails fixture needs no external database. The real local model has passed this fixture end to end; see [VALIDATION.md](VALIDATION.md).
 
-## Security model
+## Match the sandbox to your project
 
-Generated code and commands are untrusted.
+The demo images cover the bundled fixtures. Your Rails application needs its Ruby version, gems, and system libraries installed in a project-specific image. Start with [`docker/sandbox-rails.example.Dockerfile`](docker/sandbox-rails.example.Dockerfile), build it using your project’s `Gemfile` and `Gemfile.lock`, then set:
 
-- models never receive unrestricted host access;
-- side effects happen through validated tools;
-- execution is sandboxed;
-- CPU, memory, PIDs, disk, and time are limited;
-- network is denied by default;
-- secrets are not automatically mounted;
-- unsafe path traversal and symlink escapes are rejected;
-- risky capabilities require approval;
-- tool activity is auditable.
-
-### Capabilities
-
-```text
-filesystem.read
-filesystem.write
-filesystem.delete
-process.execute
-network.connect
-git.read
-git.write
-git.remote
-secrets.read
-deployment.execute
+```dotenv
+OVX_SANDBOX_IMAGE=my-project-ovx-sandbox
 ```
 
-## Repository intelligence
+Run `./bin/ovx restart` after changing the image. Tests run with Docker networking disabled: they cannot reach host PostgreSQL, Redis, external APIs, or OVX’s control-plane database. Use tests needing no external service, or configure an entirely container-local database such as SQLite. Install dependencies while building the image before submitting a task. OVX does not automatically install a project’s gems or start its test database services.
 
-OVX combines:
+## CLI and diagnostics
 
-- file tree;
-- `.gitignore` filtering;
-- language/framework detection;
-- `ripgrep`;
-- Tree-sitter symbols;
-- dependency/configuration metadata;
-- test-to-source relationships;
-- recently changed files;
-- Git history when relevant;
-- task-specific relevance scoring;
-- optional embeddings only where they add measurable value.
+| Command | Purpose |
+| --- | --- |
+| `./bin/ovx start` / `stop` / `restart` | Manage services; stopping retains database volumes. |
+| `./bin/ovx status` | Check API, runtime, worker, and model availability. |
+| `./bin/ovx doctor` | Check prerequisites and Docker readiness. |
+| `./bin/ovx logs` | Show recent logs; optionally append `api`, `worker`, `runtime`, or `model`. |
+| `./bin/ovx demo` | Create a fresh fixture. |
+| `./bin/ovx add-repo /absolute/path` | Register an allowed repository. |
+| `./bin/ovx task REPO_ID "Fix the failing spec"` | Submit a task. |
+| `./bin/ovx wait TASK_ID` | Follow a task until it stops or needs user action. |
+| `./bin/ovx show TASK_ID` / `events TASK_ID` / `diff TASK_ID` | Inspect saved state and review artifacts. |
+| `./bin/ovx apply TASK_ID` / `reject TASK_ID` | Accept or discard a completed result. |
+| `./bin/ovx approvals` / `approve APPROVAL_ID` / `deny APPROVAL_ID` | Inspect and decide approvals. |
+| `./bin/ovx cancel TASK_ID` / `retry TASK_ID` | Cancel or resume eligible tasks. |
+| `./bin/ovx test` | Run runtime, CLI, extension, and Rails tests. |
 
-Each context item stores provenance: path, line range, retrieval method, reason, and relevance score.
+The CLI reads `.env` itself; separate application terminals and `source .env` are unnecessary. Logs and process records live under `.ovx/`. For queued tasks, inspect worker and model logs. After a request timeout, inspect persisted history before resubmitting. If acceptance fails, check `git status` and the base revision; start a fresh task if the source has moved.
 
-## Rails-first specialization
+For a deterministic infrastructure check, set `MODEL_PROVIDER=mock`, restart OVX, and run `./bin/ovx smoke`. This calculator smoke checks the agent/runtime/test/diff/accept wiring; mock mode cannot handle general requests. Restore `MODEL_PROVIDER=openai_compatible` and restart before using the real model.
 
-Planned Rails-aware tools:
+## Scope
 
-```text
-find_route
-find_controller_action
-find_model
-find_association
-find_callback
-find_job
-find_policy
-find_serializer
-find_spec
-detect_n_plus_one
-run_rspec
-run_rubocop
-```
+The runtime permits bounded tools and sandboxed commands. General commands and file deletion require approval, which does not bypass runtime restrictions. Network-enabled tasks, deployment, Git push, automatic commits/PRs, and host-secret access are outside this implementation. Local inference keeps model context on your machine; configuring an external model endpoint sends context there.
 
-OVX should build a lightweight Rails relationship graph:
-
-```text
-Route → Controller#action → Service/Policy → Model → Job/Serializer
-Specs ───────────────────────────────────────► related nodes
-```
-
-## Context budgeting
-
-Model context is finite. OVX budgets it across:
-
-```text
-system instructions
-conversation/task
-task state/plan
-repository evidence
-tool observations
-output reserve
-```
-
-## Planned structure
-
-```text
-ovx/
-├── apps/
-│   ├── desktop/
-│   └── api/
-├── services/
-│   └── runtime/
-├── packages/
-│   ├── tool-schema/
-│   └── shared-types/
-├── evals/
-│   └── rails/
-├── docs/
-├── docker/
-├── scripts/
-├── .ovx/
-├── README.md
-├── CONTRIBUTING.md
-├── SECURITY.md
-└── LICENSE
-```
-
-## MVP roadmap
-
-### 0.0.1 — Vertical slice
-Prove one end-to-end Rails fix: repository → context → plan → patch → RSpec → diff.
-
-### 0.0.2 — Durable execution
-Add explicit state machine, tool persistence, retries, cancellation, crash recovery, idempotency, and ambiguous-state handling.
-
-### 0.0.3 — Security and approvals
-Add capability policy, network controls, filesystem scopes, secret isolation, approval flow, and audit trail.
-
-### 0.1 — Rails intelligence
-Add Rails graph, specialized tools, RSpec/RuboCop integration, and evaluation suite.
-
-### 0.2 — Desktop
-Add Tauri/React task view, tool timeline, approvals, diff viewer, test results, retry/cancel/resume.
-
-### 0.3 — Collaboration
-Add GitHub/GitLab and pull-request workflows.
-
-## Evaluation
-
-Measure:
-
-```text
-task success rate
-test pass rate
-regression rate
-unsafe-action attempts
-patch size
-tool-call count
-retry count
-execution time
-context usage
-recovery success
-```
-
-## Development principles
-
-1. Reliability before autonomy
-2. Local-first
-3. Provider-independent
-4. Tool-driven
-5. Capability-based security
-6. Human approval for risk
-7. Repository-aware
-8. Tests determine completion
-9. Observable by design
-10. Durable and resumable
-11. Do not persist private chain-of-thought
-12. Build the vertical slice before the platform
-
-## Documentation
-
-1. [`01_PRODUCT_REQUIREMENTS.md`](docs/01_PRODUCT_REQUIREMENTS.md)
-2. [`02_MVP_ARCHITECTURE.md`](docs/02_MVP_ARCHITECTURE.md)
-3. [`03_AGENT_RUNTIME.md`](docs/03_AGENT_RUNTIME.md)
-4. [`04_TOOLS_AND_SANDBOX.md`](docs/04_TOOLS_AND_SANDBOX.md)
-5. [`05_CONTEXT_AND_INDEXING.md`](docs/05_CONTEXT_AND_INDEXING.md)
-6. [`06_MODEL_STRATEGY.md`](docs/06_MODEL_STRATEGY.md)
-7. [`07_API_AND_DATA_MODEL.md`](docs/07_API_AND_DATA_MODEL.md)
-8. [`08_SECURITY_AND_PERMISSIONS.md`](docs/08_SECURITY_AND_PERMISSIONS.md)
-9. [`09_TESTING_EVALS_OBSERVABILITY.md`](docs/09_TESTING_EVALS_OBSERVABILITY.md)
-10. [`10_DEPLOYMENT_AND_LOCAL_DEV.md`](docs/10_DEPLOYMENT_AND_LOCAL_DEV.md)
-11. [`11_MVP_ROADMAP.md`](docs/11_MVP_ROADMAP.md)
-12. [`12_FULL_VERSION_ROADMAP.md`](docs/12_FULL_VERSION_ROADMAP.md)
-13. [`13_PRODUCT_UX.md`](docs/13_PRODUCT_UX.md)
-14. [`14_ENGINEERING_BACKLOG.md`](docs/14_ENGINEERING_BACKLOG.md)
-15. [`15_ADRS_RUNBOOKS_RELEASE.md`](docs/15_ADRS_RUNBOOKS_RELEASE.md)
-16. [`16_REFERENCES.md`](docs/16_REFERENCES.md)
-
-Consolidated specification: `docs/OVX_FULL_DEVELOPMENT_SPEC.md`
-
-## Ownership
-
-**OVX** is an Ompirit Software project.
-
-Website: https://www.ompirit.com
-
-## License
-
-A project license should be finalized before external contributions. Apache-2.0 is a strong candidate, but the final choice should reflect Ompirit Software's product and legal strategy.
-
-**Build the smallest agent that can safely complete a real coding task. Make it observable, recoverable, testable, and useful. Then scale it into the broader OVX platform.**
+This is a local development implementation. Tauri desktop, Rails symbol graphs, semantic indexing, remote runtimes, and team access controls remain roadmap work. [Implementation status](docs/IMPLEMENTATION_STATUS.md) separates delivered behavior from those design goals.

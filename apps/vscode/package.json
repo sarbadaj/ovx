@@ -1,0 +1,47 @@
+{
+  "name": "ovx-local",
+  "displayName": "OVX — Local Coding Agent",
+  "description": "Run OVX on your machine: prompt, inspect tests and diffs, and accept changes in VS Code.",
+  "version": "0.1.1",
+  "publisher": "ompirit",
+  "license": "UNLICENSED",
+  "engines": { "vscode": "^1.90.0" },
+  "categories": ["Other"],
+  "keywords": ["ovx", "local", "coding agent", "llama.cpp"],
+  "main": "./src/extension.js",
+  "extensionKind": ["workspace"],
+  "activationEvents": ["onView:ovx.agent"],
+  "capabilities": {
+    "untrustedWorkspaces": { "supported": "limited", "description": "Trust the workspace before connecting, running a task, or starting the local service." },
+    "virtualWorkspaces": { "supported": false, "description": "OVX needs a local project folder on the extension host." }
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "check": "node --check src/extension.js && node --check src/client.js && node --check src/core.js && node --check src/local-tests.js && node --check media/sidebar.js",
+    "package": "python3 scripts/package.py"
+  },
+  "contributes": {
+    "commands": [
+      { "command": "ovx.open", "title": "Open Agent", "category": "OVX" },
+      { "command": "ovx.connect", "title": "Connect to Local Service", "category": "OVX" },
+      { "command": "ovx.setToken", "title": "Set API Token", "category": "OVX" },
+      { "command": "ovx.chooseInstallation", "title": "Choose OVX Installation", "category": "OVX" },
+      { "command": "ovx.importToken", "title": "Import Token from OVX Installation", "category": "OVX" },
+      { "command": "ovx.startService", "title": "Start Local Service", "category": "OVX" },
+      { "command": "ovx.runRSpec", "title": "Run Full RSpec in Project", "category": "OVX" },
+      { "command": "ovx.cancelRSpec", "title": "Cancel Project RSpec Run", "category": "OVX" },
+      { "command": "ovx.refresh", "title": "Refresh Tasks", "category": "OVX", "icon": "$(refresh)" }
+    ],
+    "viewsContainers": { "activitybar": [{ "id": "ovx", "title": "OVX", "icon": "media/ovx.svg" }] },
+    "views": { "ovx": [{ "type": "webview", "id": "ovx.agent", "name": "Local Agent" }] },
+    "menus": { "view/title": [{ "command": "ovx.refresh", "when": "view == ovx.agent", "group": "navigation" }] },
+    "configuration": {
+      "title": "OVX",
+      "properties": {
+        "ovx.serviceUrl": { "type": "string", "default": "http://127.0.0.1:3000", "scope": "machine", "description": "Local OVX API address. Only HTTP(S) loopback addresses are allowed. The service must run on the extension host machine." },
+        "ovx.installationPath": { "type": "string", "default": "", "scope": "machine", "description": "Absolute OVX installation directory containing bin/ovx. Configure with OVX: Choose OVX Installation. Never inferred from your project." },
+        "ovx.pollIntervalMs": { "type": "number", "default": 1500, "minimum": 1000, "maximum": 30000, "scope": "machine", "description": "Refresh interval for task progress." }
+      }
+    }
+  }
+}
