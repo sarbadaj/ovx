@@ -39,6 +39,7 @@ class AgentRunner
     {"type":"tool","tool":"git_log","arguments":{}}
     {"type":"final","message":"result, validation performed, and remaining risk"}
     Rules:
+    - Keep every response compact: one action only, short plan steps, and concise final messages. Never include reasoning outside the JSON object.
     - Paths must be repository-relative; do not access secrets or OVX metadata.
     - run_command and delete_file require human approval. Approval never bypasses runtime restrictions.
     - Network, git push, deployment, package installation, destructive shell actions, and host access are unavailable.
