@@ -80,6 +80,6 @@ def install():
     download(MODEL_URL, target, MODEL_SHA, 1_929_903_360)
     configure({"MODEL_PROVIDER": "openai_compatible", "MODEL_PATH": target,
                "MODEL_BASE_URL": "http://127.0.0.1:8080/v1", "MODEL_NAME": "ovx-local",
-               "MODEL_JSON_MODE": "true", "MODEL_CONTEXT_SIZE": "8192",
-               "MODEL_CONTEXT_BYTES": "18000", "MODEL_MAX_TOKENS": "1800"})
+               "MODEL_JSON_MODE": "true", "MODEL_CONTEXT_SIZE": "16384",
+               "MODEL_CONTEXT_BYTES": "60000", "MODEL_MAX_TOKENS": "8192"})
     print("Local coding model verified and configured. Run bin/ovx restart.")
