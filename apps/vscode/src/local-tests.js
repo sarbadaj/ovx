@@ -7,7 +7,7 @@ const path = require('node:path');
 function isRSpecRequest(request) {
   if (typeof request !== 'string') return false;
   const text = request.trim().toLowerCase().replace(/\s+/g, ' ').replace(/[.!]$/, '').trim();
-  return /^(?:please )?(?:run (?:full )?rspec|bundle exec rspec|fix (?:the )?(?:failing )?rspec issue)(?: (?:of this project|in this project|for this project|in this folder))?(?: please)?$/.test(text);
+  return /^(?:please )?(?:run (?:full )?rspec|bundle exec rspec)(?: (?:of this project|in this project|for this project|in this folder))?(?: please)?$/.test(text);
 }
 
 const ignored = new Set(['.git', '.ovx', '.bundle', '.venv', 'node_modules', 'vendor', 'tmp', 'log', 'logs', 'coverage', 'dist', 'build', 'storage']);

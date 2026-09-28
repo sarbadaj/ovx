@@ -40,3 +40,17 @@ summary { cursor: pointer; font-size: 11px; overflow-wrap: anywhere; }
 footer { border-top: 1px solid var(--vscode-panel-border); padding-top: 12px; margin-top: 24px; }
 button.link { color: var(--vscode-textLink-foreground); background: transparent; padding: 0; font-size: inherit; }
 [hidden] { display: none !important; }
+
+/* Conversation layout: progress and review above an always reachable composer. */
+body { display: flex; flex-direction: column; margin: 0; min-height: 100vh; box-sizing: border-box; padding: 16px; gap: 4px; }
+header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.brand { font-size: 18px; }
+#task { border: 0; flex: 1; padding-top: 8px; }
+#request { margin-left: 20px; padding: 12px 14px; border-radius: 16px; background: var(--vscode-textBlockQuote-background); }
+#result { line-height: 1.7; }
+#promptForm { order: 10; position: sticky; bottom: 8px; margin-top: 20px; padding: 12px; border: 1px solid var(--vscode-panel-border); border-radius: 16px; background: var(--vscode-editor-background); box-shadow: 0 4px 20px #0002; }
+#promptForm label { margin: 0 0 8px; font-weight: 400; }
+#prompt { background: transparent; border: 0; min-height: 72px; padding: 4px; }
+#submit { border-radius: 12px; padding: 7px 16px; }
+footer { order: 11; margin-top: 8px; }
+pre, .approval { border-radius: 8px; }

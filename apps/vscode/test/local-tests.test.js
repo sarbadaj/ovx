@@ -7,6 +7,7 @@ const path = require('node:path');
 const { isRSpecRequest, rspecRoots } = require('../src/local-tests');
 
 test('only explicit allowlisted RSpec prompts choose direct local execution', () => {
+  for (const request of ['fix rspec issue', 'fix failing rspec issue', 'fix the rspec issue']) assert.equal(isRSpecRequest(request), false, 'repair requests must reach the coding agent');
   for (const request of ['run full rspec', 'run rspec of this project', 'Please run full RSpec in this project.', 'bundle exec rspec', 'run rspec for this project please', 'run rspec in this folder']) assert.ok(isRSpecRequest(request), request);
   for (const request of ['fix failing specs', 'run rspec and fix failures', 'bundle exec rspec; rm -rf .', 'run rspec spec/x_spec.rb', 'run rspec\n$(touch foo)', 'run full rspec && echo done', 'run all tests']) assert.equal(isRSpecRequest(request), false, request);
 });

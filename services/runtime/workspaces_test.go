@@ -343,6 +343,15 @@ func TestDockerExecutionAndGitProtection(t *testing.T) {
 		t.Fatalf("sandbox protection failed: %s %d %v", out, code, err)
 	}
 	commandTimeout = 500 * time.Millisecond
+	if err := os.MkdirAll(filepath.Join(workspace, "server"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	commandTimeout = 30 * time.Second
+	out, code, err = runDockerAt(workspace, []string{"ruby", "-e", `puts Dir.pwd; raise unless Dir.pwd == '/workspace/server'`}, "server")
+	if err != nil || code != 0 {
+		t.Fatalf("nested test directory failed: %s %d %v", out, code, err)
+	}
+	commandTimeout = 500 * time.Millisecond
 	started := time.Now()
 	_, _, err = runDocker(workspace, []string{"ruby", "-e", "sleep 30"})
 	if err == nil || time.Since(started) > 15*time.Second {

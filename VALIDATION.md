@@ -1,5 +1,14 @@
 # Validation — 28 September 2026
 
+## Repair workflow update (0.1.2)
+
+- Repair prompts such as `fix rspec issue` now create coding tasks, with detected nested application directories included as context.
+- Sandbox tests support a validated `cwd` such as `server`; Docker execution, timeout, and metadata protection checks passed.
+- Unsupported `bundle install` requests no longer create approvals that the runtime cannot execute. Repeated failed paths trigger repository discovery.
+- Real local-model task 27 repaired the Rails fixture controller, passed RSpec, produced the expected diff, preserved source until acceptance, and passed an independent RSpec run afterward (1 example, 0 failures).
+- This validates the bundled Rails environment. SmartGuruji still requires a sandbox containing its dependencies and test services; its full repair workflow is not yet verified.
+- The conversation layout keeps the prompt composer below task progress and review. It is an OVX interface, not an exact reproduction of Codex.
+
 Validated on this Apple Silicon Mac (8 GB RAM). These results cover the delivered
 local workflow and bundled fixtures, not arbitrary repositories or model tasks.
 

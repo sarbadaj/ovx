@@ -46,6 +46,8 @@ class AgentRunner
     - If a tool fails, inspect its observation and choose a safe next step.
     - Always begin with list_files. Projects may contain a nested application directory (for example server/); use the actual directory containing Gemfile/spec before reading or running tests.
     - Never repeat an identical failed tool call. Correct the relative path from the error or list the directory first.
+    - For nested applications, run_tests accepts a cwd argument, e.g. {"command":"bundle exec rspec","cwd":"server"}. File paths still start at the repository root, e.g. server/spec/example_spec.rb.
+    - Missing Gemfile means inspect the project layout first. Package installation is not an available command; never request bundle install approval.
     - All edits are isolated proposals. The user must accept the result to update the original repository.
   PROMPT
 
@@ -75,10 +77,20 @@ class AgentRunner
     @task.tool_calls.where(state: "authorized").each { |call| execute_tool_call!(call) }
     transition!(state: @task.plan.present? ? "executing" : "planning")
     malformed_actions = 0
+    truncated_actions = 0
 
     MAX_MODEL_STEPS.times do |index|
       ensure_active!
-      raw = @model.chat(@messages)
+      begin
+        raw = @model.chat(@messages)
+      rescue ModelClient::TruncatedAction => error
+        truncated_actions += 1
+        raise if truncated_actions > 2
+        append("user", "The last response exceeded the output budget and was discarded; none of its actions executed. Return one short complete JSON action. Split large file changes into small apply_patch calls. Do not repeat a whole-file rewrite.")
+        event("model_response_retry", reason: error.message, attempt: truncated_actions)
+        persist_transcript!
+        next
+      end
       ensure_active! # Cancellation can arrive while the model is generating.
       begin
         action = parse_action(raw)
@@ -147,6 +159,19 @@ class AgentRunner
     raise AgentError, "tool not allowed: #{tool}" unless ALLOWED_TOOLS.include?(tool)
     raise AgentError, "tool arguments must be an object" unless action.fetch("arguments", {}).is_a?(Hash)
     arguments = action.fetch("arguments", {})
+    if tool == "run_command" && arguments["command"].to_s.strip.match?(/\Abundle\s+install\b/)
+      append("user", "bundle install is unavailable in this sandbox. Inspect list_files to locate Gemfile; use run_tests with cwd for nested apps. If gems are missing, report the required sandbox dependencies rather than requesting installation approval.")
+      persist_transcript!
+      return false
+    end
+    previous = @task.tool_calls.where(tool_name: tool).last
+    if previous && previous.arguments == arguments && previous.state == "failed"
+      append("user", "This exact tool call already failed. Inspect this repository listing and correct the path or command before retrying.")
+      listing = @runtime.execute(workspace: @task.workspace_path, tool: "list_files", arguments: {})
+      append("user", "Repository listing: #{JSON.generate(truncate(listing))}")
+      persist_transcript!
+      return false
+    end
     append("assistant", JSON.generate(action))
     call = nil
     needs_approval = %w[run_command delete_file].include?(tool)

@@ -38,7 +38,7 @@ Run commands from the OVX checkout. Service hosts are macOS or Linux; the manage
 
 `setup-model` installs checksum-verified **llama.cpp b11207** and **Qwen2.5-Coder-3B-Instruct Q4_K_M** and configures managed local inference. `start` manages the model, runtime, API, and worker together. A 3B model on an 8 GB machine is a constrained starting point: use small, targeted tasks and inspect tests and diffs carefully. Larger Rails changes may exceed its reasoning, context, or available-memory capacity. A configured model does not guarantee that an arbitrary coding task will succeed.
 
-The generated VSIX is [`apps/vscode/dist/ovx-local-0.1.1.vsix`](apps/vscode/dist/ovx-local-0.1.1.vsix). If `code` is unavailable, run `./bin/ovx package-extension`, then use **Extensions → … → Install from VSIX**. Reload VS Code when prompted.
+The generated VSIX is [`apps/vscode/dist/ovx-local-0.1.2.vsix`](apps/vscode/dist/ovx-local-0.1.2.vsix). If `code` is unavailable, run `./bin/ovx package-extension`, then use **Extensions → … → Install from VSIX**. Reload VS Code when prompted.
 
 ## Use the extension
 

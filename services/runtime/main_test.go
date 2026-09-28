@@ -2,6 +2,15 @@ package main
 
 import "testing"
 
+func TestTestDirectoryCannotEscapeWorkspace(t *testing.T) {
+	root := t.TempDir()
+	for _, cwd := range []string{"../outside", "/tmp", "missing"} {
+		if _, _, err := runDockerAt(root, []string{"bundle", "exec", "rspec"}, cwd); err == nil {
+			t.Fatalf("unsafe or missing cwd accepted: %s", cwd)
+		}
+	}
+}
+
 func TestValidateTestCommand(t *testing.T) {
 	valid := []string{
 		"ruby test/calculator_test.rb",

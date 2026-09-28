@@ -201,8 +201,16 @@ class Controller {
     if (isRSpecRequest(request)) return this.runLocalRSpec();
     const repository = await this.ensureRepository();
     this.assertSaved();
+    let taskRequest = request.trim();
+    if (/\b(rspec|specs)\b/i.test(request)) {
+      const roots = await rspecRoots(this.folder().uri.fsPath);
+      if (roots.length) {
+        const directories = roots.map(root => path.relative(this.folder().uri.fsPath, root) || '.');
+        taskRequest += `\n\nDetected RSpec application directories (relative to repository): ${JSON.stringify(directories)}. Read files using repository-relative paths. Use run_tests with cwd set to the application directory. Diagnose failures, make the requested code changes, rerun tests, and inspect the diff.`;
+      }
+    }
     try {
-      const task = await this.client.request('POST', '/api/tasks', { repository_id: repository.id, request: request.trim() });
+      const task = await this.client.request('POST', '/api/tasks', { repository_id: repository.id, request: taskRequest });
       await this.selectTask(task.id, task);
       this.view?.webview.postMessage({ type: 'submitted' });
       await this.refresh(true);

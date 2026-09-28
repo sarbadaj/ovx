@@ -311,7 +311,8 @@ func execute(workspace, tool string, args map[string]interface{}) ExecuteRespons
 		if err := validateTestCommand(command); err != nil {
 			return result(nil, err)
 		}
-		out, code, err := runSandboxedShell(workspace, command)
+		cwd, _ := args["cwd"].(string)
+		out, code, err := runDockerAt(workspace, strings.Fields(command), cwd)
 		resp := result(out, err)
 		resp.ExitCode = &code
 		return resp
@@ -561,6 +562,26 @@ func runSandboxedArgs(workspace string, command []string) (string, int, error) {
 }
 
 func runDocker(workspace string, command []string) (string, int, error) {
+	return runDockerAt(workspace, command, "")
+}
+
+func runDockerAt(workspace string, command []string, cwd string) (string, int, error) {
+	containerDirectory := "/workspace"
+	if cwd != "" && cwd != "." {
+		directory, err := safePath(workspace, cwd)
+		if err != nil {
+			return "", 1, err
+		}
+		info, err := os.Stat(directory)
+		if err != nil || !info.IsDir() {
+			return "", 1, errors.New("test cwd must be an existing repository directory")
+		}
+		relative, err := filepath.Rel(workspace, directory)
+		if err != nil {
+			return "", 1, err
+		}
+		containerDirectory += "/" + filepath.ToSlash(relative)
+	}
 	state := stateFor(workspace)
 	ctx, cancel := context.WithTimeout(context.Background(), commandTimeout)
 	defer cancel()
@@ -583,7 +604,7 @@ func runDocker(workspace string, command []string) (string, int, error) {
 		"-e", "GIT_CONFIG_NOSYSTEM=1", "-e", "GIT_CONFIG_GLOBAL=/dev/null",
 		"--mount", "type=bind,src=" + workspace + ",dst=/workspace",
 		"--mount", "type=bind,src=" + filepath.Join(workspace, ".git") + ",dst=/workspace/.git,readonly",
-		"-w", "/workspace", sandboxImage,
+		"-w", containerDirectory, sandboxImage,
 	}
 	args = append(args, command...)
 	cmd := exec.CommandContext(ctx, "docker", args...)

@@ -46,6 +46,16 @@ async function setup(t) {
   return { fixture, folder, controller, ...environment };
 }
 
+test('RSpec repair creates an agent task with nested application context', async t => {
+  const { controller, folder, fixture, executions } = await setup(t);
+  await fs.mkdir(path.join(folder, 'server', 'spec'), { recursive: true });
+  await fs.writeFile(path.join(folder, 'server', 'Gemfile'), '');
+  await controller.createTask('fix rspec issue');
+  assert.equal(executions.length, 0, 'repair must not stop at a terminal test run');
+  assert.equal(fixture.tasks.length, 1);
+  assert.match(controller.task.user_request, /Detected RSpec application directories.*server/);
+});
+
 test('sidebar flow registers a repository, creates task, reviews native diff and accepts', async t => {
   const { controller, fixture, commands } = await setup(t);
   await controller.connect();

@@ -35,6 +35,43 @@ class AgentRunnerTest < ActiveSupport::TestCase
     { type: "final", message: "Fixed and tested" }
   end
 
+  test "unsupported dependency installation does not create a dead end approval" do
+    task = make_task
+    model = ScriptedModel.new({ type: 'tool', tool: 'run_command', arguments: { command: 'bundle install' } }, finish)
+    AgentRunner.new(task, model: model, runtime: FakeRuntime.new(changed: false)).run
+    assert_empty task.approvals
+    assert_empty task.tool_calls
+    assert task.transcript.any? { |message| message['content'].include?('bundle install is unavailable') }
+  end
+
+  test "repeated failed path is replaced with repository discovery" do
+    task = make_task
+    runtime = FakeRuntime.new(changed: false)
+    def runtime.execute(workspace:, tool:, arguments:)
+      @calls << tool
+      raise RuntimeClient::RuntimeError, 'file does not exist' if tool == 'read_file'
+      { 'output' => ['server/spec/example_spec.rb'], 'exit_code' => 0 }
+    end
+    missing = { type: 'tool', tool: 'read_file', arguments: { path: 'spec/example_spec.rb' } }
+    AgentRunner.new(task, model: ScriptedModel.new(missing, missing, finish), runtime: runtime).run
+    assert_equal ['read_file', 'list_files'], runtime.calls
+    assert task.transcript.any? { |message| message['content'].include?('server/spec/example_spec.rb') }
+  end
+
+  test "truncated responses are discarded and retried with smaller action guidance" do
+    task = make_task
+    calls = 0
+    model = ScriptedModel.new(finish) do
+      calls += 1
+      raise ModelClient::TruncatedAction, 'output budget exceeded' if calls == 1
+    end
+    AgentRunner.new(task, model: model, runtime: FakeRuntime.new(changed: false)).run
+    assert_equal 'completed', task.reload.state
+    assert_equal 2, calls
+    assert task.agent_events.where(event_type: 'model_response_retry').exists?
+    assert_empty task.tool_calls
+  end
+
   test "completion requires passing tests and diff after latest edit" do
     task = make_task
     runtime = FakeRuntime.new

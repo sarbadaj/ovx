@@ -4,6 +4,7 @@ require "openssl"
 
 class ModelClient
   class ModelError < StandardError; end
+  class TruncatedAction < ModelError; end
 
   def self.build
     provider = ENV.fetch("MODEL_PROVIDER", "mock")
@@ -43,7 +44,7 @@ class ModelClient
     choice = body.is_a?(Hash) && body["choices"].is_a?(Array) ? body["choices"].first : nil
     content = choice.is_a?(Hash) ? choice.dig("message", "content") : nil
     if choice.is_a?(Hash) && choice["finish_reason"] == "length"
-      raise ModelError, "model action was truncated at MODEL_MAX_TOKENS=#{@max_tokens}; increase MODEL_MAX_TOKENS within the model context window or ask for a smaller edit"
+      raise TruncatedAction, "model action was truncated at MODEL_MAX_TOKENS=#{@max_tokens}; increase MODEL_MAX_TOKENS within the model context window or ask for a smaller edit"
     end
     raise ModelError, "model response missing choices[0].message.content" unless content.is_a?(String) && content.present?
     content
