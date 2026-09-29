@@ -6,7 +6,7 @@ Use your local OVX service from the VS Code sidebar: submit a coding task, follo
 
 1. Set up OVX from the repository root with `./bin/setup`, configure your model and workspace root, then run `./bin/ovx start`.
 2. Build the extension from this directory: `npm run package`. It needs Node.js and Python 3, with no npm dependencies or downloads.
-3. Install `dist/ovx-local-0.1.3.vsix` using **Extensions → … → Install from VSIX**, or `code --install-extension dist/ovx-local-0.1.3.vsix`.
+3. Install `dist/ovx-local-0.1.4.vsix` using **Extensions → … → Install from VSIX**, or `code --install-extension dist/ovx-local-0.1.4.vsix`.
 4. Open any local project folder, including a dirty or non-Git folder. Trust the workspace in VS Code; saved files are snapshotted for agent tasks.
 5. Open the OVX activity bar. Click **Set token** and paste `OVX_API_TOKEN` from the OVX installation’s `.env`. Alternatively, choose **Import token**, explicitly select the OVX installation directory, and import its token.
 6. Click **Connect**, select the repository when using a multi-root workspace, and submit a task such as “Fix this failing RSpec test. Run the relevant tests and inspect the diff.”

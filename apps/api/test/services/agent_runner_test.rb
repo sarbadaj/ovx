@@ -14,12 +14,13 @@ class AgentRunnerTest < ActiveSupport::TestCase
   end
 
   class FakeRuntime
-    attr_reader :calls
+    attr_reader :calls, :commands
     def initialize(changed: true, exit_codes: [0])
-      @changed, @exit_codes, @calls = changed, exit_codes, []
+      @changed, @exit_codes, @calls, @commands = changed, exit_codes, [], []
     end
     def execute(workspace:, tool:, arguments:)
       @calls << tool
+      @commands << arguments["command"] if tool == "run_tests"
       { "output" => "ok", "exit_code" => tool == "run_tests" ? (@exit_codes.shift || 0) : 0 }
     end
     def diff_workspace(**)
@@ -42,6 +43,25 @@ class AgentRunnerTest < ActiveSupport::TestCase
     assert_empty task.approvals
     assert_empty task.tool_calls
     assert task.transcript.any? { |message| message['content'].include?('bundle install is unavailable') }
+  end
+
+  test "replacement requests cannot turn into file deletion approvals" do
+    task = make_task
+    model = ScriptedModel.new({ type: 'tool', tool: 'delete_file', arguments: { path: 'lib/project.rb', reason: 'replace with updated code' } }, finish)
+    AgentRunner.new(task, model: model, runtime: FakeRuntime.new(changed: false)).run
+    assert_empty task.approvals
+    assert_empty task.tool_calls
+    assert task.transcript.any? { |message| message['content'].include?('Do not delete a file to change it') }
+  end
+
+  test "repeating a rejected replacement stops with a useful error" do
+    task = make_task
+    action = { type: 'tool', tool: 'delete_file', arguments: { path: 'lib/project.rb', reason: 'replace file' } }
+    error = assert_raises(AgentRunner::AgentError) do
+      AgentRunner.new(task, model: ScriptedModel.new(action, action, action), runtime: FakeRuntime.new(changed: false)).run
+    end
+    assert_match 'repeated an invalid delete_file action', error.message
+    assert_empty task.approvals
   end
 
   test "missing sandbox gems stops with environment setup instructions and preserved output" do
@@ -106,6 +126,32 @@ class AgentRunnerTest < ActiveSupport::TestCase
     AgentRunner.new(task, model: model, runtime: runtime).run
     assert_equal "completed", task.reload.state
     assert_equal 3, runtime.calls.count("run_tests")
+  end
+
+  test "a syntax check cannot validate a changed test file" do
+    task = make_task
+    runtime = FakeRuntime.new
+    def runtime.diff_workspace(**)
+      { "files" => [{ "path" => "test/project_test.rb" }, { "path" => "test/other_test.rb" }] }
+    end
+    syntax = { type: "tool", tool: "run_tests", arguments: { command: "ruby -c lib/project.rb" } }
+    suite = { type: "tool", tool: "run_tests", arguments: { command: "ruby test/project_test.rb" } }
+    AgentRunner.new(task, model: ScriptedModel.new(tool("apply_patch"), syntax, tool("git_diff"), finish, suite, tool("git_diff"), finish), runtime: runtime).run
+    assert_equal "completed", task.reload.state
+    assert task.transcript.any? { |message| message["content"].include?("syntax check is insufficient") }
+    assert_equal 2, runtime.calls.count("run_tests")
+  end
+
+  test "a changed Ruby test converts a syntax-only check into a functional test run" do
+    task = make_task
+    runtime = FakeRuntime.new
+    def runtime.diff_workspace(**)
+      { "files" => [{ "path" => "test/project_test.rb" }] }
+    end
+    syntax = { type: "tool", tool: "run_tests", arguments: { command: "ruby -c lib/project.rb" } }
+    AgentRunner.new(task, model: ScriptedModel.new(tool("apply_patch"), syntax, tool("git_diff"), finish), runtime: runtime).run
+    assert_equal ["ruby test/project_test.rb"], runtime.commands
+    assert_equal "completed", task.reload.state
   end
 
   test "a failed test cannot be declared completed just because no files changed" do

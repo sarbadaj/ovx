@@ -29,10 +29,11 @@ class AgentRunner
     {"type":"tool","tool":"list_files","arguments":{}}
     {"type":"tool","tool":"read_file","arguments":{"path":"relative/path"}}
     {"type":"tool","tool":"search_code","arguments":{"query":"text"}}
-    {"type":"tool","tool":"apply_patch","arguments":{"path":"relative/path","old":"exact old text","new":"replacement text","expected_sha256":"optional hash from read_file"}}
+    {"type":"tool","tool":"apply_patch","arguments":{"path":"relative/path","old":"literal source-code text to replace","new":"literal replacement source-code text","expected_sha256":"optional hash from read_file"}}
     {"type":"tool","tool":"create_file","arguments":{"path":"relative/path","content":"new file content"}}
     {"type":"tool","tool":"delete_file","arguments":{"path":"relative/path","expected_sha256":"hash from read_file","reason":"why deletion is needed"}}
     {"type":"tool","tool":"run_tests","arguments":{"command":"bundle exec rspec spec/path_spec.rb"}}
+    {"type":"tool","tool":"run_tests","arguments":{"command":"ruby -c lib/new_file.rb"}}
     {"type":"tool","tool":"run_command","arguments":{"command":"bundle exec rubocop app/models/user.rb","reason":"why this elevated command is useful"}}
     {"type":"tool","tool":"git_status","arguments":{}}
     {"type":"tool","tool":"git_diff","arguments":{}}
@@ -47,6 +48,8 @@ class AgentRunner
     - Always begin with list_files. Projects may contain a nested application directory (for example server/); use the actual directory containing Gemfile/spec before reading or running tests.
     - Never repeat an identical failed tool call. Correct the relative path from the error or list the directory first.
     - For nested applications, run_tests accepts a cwd argument, e.g. {"command":"bundle exec rspec","cwd":"server"}. File paths still start at the repository root, e.g. server/spec/example_spec.rb.
+    - For a new Ruby project, add focused Minitest tests and run them with run_tests; use ruby -c for syntax checks.
+    - Use apply_patch to edit an existing file; create_file is only for a path that does not exist. Never delete an existing file merely to replace or update it. The old/new fields are actual file contents, not hashes.
     - Missing Gemfile means inspect the project layout first. Package installation is not an available command; never request bundle install approval.
     - All edits are isolated proposals. The user must accept the result to update the original repository.
   PROMPT
@@ -56,6 +59,7 @@ class AgentRunner
     @model = model || ModelClient.build
     @runtime = runtime
     @messages = normalize_messages(task.transcript.presence || initial_messages)
+    @rejected_actions = Hash.new(0)
   end
 
   def run
@@ -133,6 +137,12 @@ class AgentRunner
 
   private
 
+  def reject_repeated_action!(tool, arguments)
+    key = Digest::SHA256.hexdigest(JSON.generate([tool, arguments]))
+    @rejected_actions[key] += 1
+    raise AgentError, "The local model repeated an invalid #{tool} action three times. Review the task and retry with a narrower request or a stronger model." if @rejected_actions[key] >= 3
+  end
+
   def initial_messages
     [{ "role" => "system", "content" => SYSTEM_PROMPT },
      { "role" => "user", "content" => "Project: #{@task.repository.name}\nWorkspace: isolated snapshot of the project’s current saved files, including uncommitted changes. Its Git baseline belongs to this task; the source folder may not use Git. A repository can contain a nested app directory; discover it before using paths.\nTask: #{@task.user_request}" }]
@@ -159,13 +169,28 @@ class AgentRunner
     raise AgentError, "tool not allowed: #{tool}" unless ALLOWED_TOOLS.include?(tool)
     raise AgentError, "tool arguments must be an object" unless action.fetch("arguments", {}).is_a?(Hash)
     arguments = action.fetch("arguments", {})
+    if tool == "run_tests" && arguments["command"].to_s.start_with?("ruby -c ")
+      changed_tests = @runtime.diff_workspace(workspace: @task.workspace_path, base_revision: @task.base_revision).fetch("files", []).filter_map { |file| file["path"] if file["path"].to_s.match?(%r{\Atest/[A-Za-z0-9_/-]+_test\.rb\z}) }
+      if changed_tests.one?
+        arguments = arguments.merge("command" => "ruby #{changed_tests.first}")
+        action = action.merge("arguments" => arguments)
+        append("user", "A test file changed, so OVX is running its Minitest suite rather than only checking Ruby syntax.")
+      end
+    end
     if tool == "run_command" && arguments["command"].to_s.strip.match?(/\Abundle\s+install\b/)
       append("user", "bundle install is unavailable in this sandbox. Inspect list_files to locate Gemfile; use run_tests with cwd for nested apps. If gems are missing, report the required sandbox dependencies rather than requesting installation approval.")
       persist_transcript!
       return false
     end
+    if tool == "delete_file" && arguments["reason"].to_s.match?(/replac|rewrit|recreat|updat|edit/i)
+      reject_repeated_action!(tool, arguments)
+      append("user", "Do not delete a file to change it. Read the existing file, then use apply_patch with literal old and new source text. The SHA256 belongs only in expected_sha256.")
+      persist_transcript!
+      return false
+    end
     previous = @task.tool_calls.where(tool_name: tool).last
     if previous && previous.arguments == arguments && previous.state == "failed"
+      reject_repeated_action!(tool, arguments)
       append("user", "This exact tool call already failed. Inspect this repository listing and correct the path or command before retrying.")
       listing = @runtime.execute(workspace: @task.workspace_path, tool: "list_files", arguments: {})
       append("user", "Repository listing: #{JSON.generate(truncate(listing))}")
@@ -220,6 +245,7 @@ class AgentRunner
     call.update!(state: "failed", completed_at: Time.current)
     event("tool_failed", tool_call_id: call.id, tool: call.tool_name, error: error.message)
     append("user", "TOOL ERROR #{call.tool_name}: #{error.message}")
+    append("user", "The target file already exists. Use apply_patch with actual old and new text; do not delete it.") if call.tool_name == "create_file" && error.message.include?("already exists")
     persist_transcript!
   end
 
@@ -230,6 +256,11 @@ class AgentRunner
     changes = @runtime.diff_workspace(workspace: @task.workspace_path, base_revision: @task.base_revision)
     test = @task.tool_calls.where(tool_name: "run_tests").last
     return true if changes.fetch("files", []).empty? && !mutation && !test
+
+    test_files_changed = changes.fetch("files", []).any? { |file| file.fetch("path", "").match?(%r{(?:\A|/)(?:test|spec)/}) }
+    if test_files_changed && test&.arguments&.fetch("command", "").to_s.start_with?("ruby -c ")
+      return validation_needed!("A test file changed, so a syntax check is insufficient. Run the actual project test command (for this Ruby starter: ruby test/project_test.rb), then inspect git_diff.")
+    end
 
     attempt = test&.tool_attempts&.last
     unless test && test.state == "completed" && attempt&.exit_code == 0 && (!mutation || test.id > mutation.id)

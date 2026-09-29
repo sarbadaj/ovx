@@ -7,6 +7,7 @@ const { spawn } = require('node:child_process');
 const { Client } = require('./client');
 const { serviceUrl, id, actions, tokenFromEnv, validateToken, isWithin, publicTask } = require('./core');
 const { isRSpecRequest, rspecRoots } = require('./local-tests');
+const { projectName, createRubyProject } = require('./new-project');
 
 class Controller {
   constructor(vscode, context) {
@@ -169,6 +170,18 @@ class Controller {
     this.vscode.window.showInformationMessage('Rails test environment ready. Retry the failed task.');
   }
 
+  async newProject() {
+    this.trust();
+    const parent = await this.vscode.window.showOpenDialog({ canSelectFolders: true, canSelectFiles: false, canSelectMany: false, title: 'Choose parent folder for a new Ruby project' });
+    if (!parent?.[0]) return;
+    const name = await this.vscode.window.showInputBox({ title: 'New OVX Ruby project', prompt: 'Project folder name', validateInput: value => {
+      try { projectName(value); return undefined; } catch (error) { return error.message; }
+    } });
+    if (name === undefined) return;
+    const directory = await createRubyProject(parent[0].fsPath, name);
+    await this.vscode.commands.executeCommand('vscode.openFolder', this.vscode.Uri.file(directory));
+  }
+
   async connect() {
     this.trust();
     const url = serviceUrl(this.setting('serviceUrl', 'http://127.0.0.1:3000'));
@@ -229,8 +242,9 @@ class Controller {
     const repository = await this.ensureRepository();
     this.assertSaved();
     let taskRequest = request.trim();
+    const roots = await rspecRoots(this.folder().uri.fsPath);
+    if (roots.length) await this.prepareRails();
     if (/\b(rspec|specs)\b/i.test(request)) {
-      const roots = await rspecRoots(this.folder().uri.fsPath);
       if (roots.length) {
         const directories = roots.map(root => path.relative(this.folder().uri.fsPath, root) || '.');
         taskRequest += `\n\nDetected RSpec application directories (relative to repository): ${JSON.stringify(directories)}. Read files using repository-relative paths. Use run_tests with cwd set to the application directory. Diagnose failures, make the requested code changes, rerun tests, and inspect the diff.`;
@@ -469,6 +483,7 @@ class Controller {
         case 'importToken': return this.importToken();
         case 'startService': return this.startService();
         case 'prepareRails': return this.prepareRails();
+        case 'newProject': return this.newProject();
         case 'folder': return this.selectFolder(message.uri);
         case 'create': return this.createTask(message.request);
         case 'runRSpec': return this.runLocalRSpec();
@@ -507,7 +522,7 @@ function webviewHtml(webview, vscode, media) {
     <link rel="stylesheet" href="${style}"><title>OVX Local Agent</title></head><body>
     <header><div class="brand">OVX <span>LOCAL AGENT</span></div><div id="connection" role="status">Disconnected</div></header>
     <div id="notice" class="notice"></div><div id="error" role="alert" class="error" hidden></div>
-    <div class="toolbar"><button data-message="connect">Connect</button><button class="secondary" data-message="startService">Start service</button><button class="secondary" data-message="setToken">Set token</button><button class="secondary" data-message="importToken">Import token</button></div>
+    <div class="toolbar"><button data-message="connect">Connect</button><button class="secondary" data-message="newProject">New Ruby project</button><button class="secondary" data-message="startService">Start service</button><button class="secondary" data-message="setToken">Set token</button><button class="secondary" data-message="importToken">Import token</button></div>
     <label for="folder">Repository</label><select id="folder" aria-label="Workspace repository"></select><p id="folderPath" class="muted"></p>
     <form id="promptForm"><label for="prompt">What should OVX do?</label><textarea id="prompt" rows="5" maxlength="20000" placeholder="run full rspec — or describe a coding task" required></textarea><button id="submit" type="submit">Run task</button><span class="muted shortcut">⌘ / Ctrl + Enter</span></form>
     <p class="muted">“run full rspec” runs project tests in your local terminal. Coding requests use the OVX agent.</p><div class="toolbar"><button class="secondary" data-message="runRSpec">Run full RSpec in project</button><button class="secondary" data-message="prepareRails">Prepare Rails environment</button></div>
@@ -537,6 +552,7 @@ function activate(context) {
     'ovx.startService': () => controller.startService(),
     'ovx.runRSpec': () => controller.runLocalRSpec(),
     'ovx.prepareRails': () => controller.prepareRails(),
+    'ovx.newProject': () => controller.newProject(),
     'ovx.cancelRSpec': () => controller.cancelLocalRSpec(),
     'ovx.refresh': () => controller.connected ? controller.refresh(true) : controller.connect()
   };

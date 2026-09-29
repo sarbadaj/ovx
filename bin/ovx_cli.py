@@ -263,9 +263,12 @@ def status(env):
     for label, url in (("OVX Agent", env.get("OVX_API_URL", "http://127.0.0.1:3000")), ("Runtime", env.get("OVX_RUNTIME_URL", "http://127.0.0.1:7070"))):
         try:
             request(env, "/health", base=url, timeout=2)
+            if label == "OVX Agent":
+                # /health can return 200 while PostgreSQL or Redis has stopped.
+                request(env, "/api/repositories", base=url, timeout=3)
             state = "running"
         except RuntimeError:
-            state = "stopped/unreachable"
+            state = "stopped/unreachable or database offline"
             healthy = False
         print(f"{label:14} {state}")
     worker = alive(record_for("worker"))

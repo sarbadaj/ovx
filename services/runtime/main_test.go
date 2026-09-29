@@ -14,6 +14,7 @@ func TestTestDirectoryCannotEscapeWorkspace(t *testing.T) {
 func TestValidateTestCommand(t *testing.T) {
 	valid := []string{
 		"ruby test/calculator_test.rb",
+		"ruby -c lib/calculator.rb",
 		"bundle exec rspec spec/models/user_spec.rb:12",
 		"bin/rails test test/models/user_test.rb",
 		"bundle exec rails test test/controllers/users_controller_test.rb",

@@ -507,6 +507,7 @@ func applyPatch(workspace, relative, oldText, newText, expectedSHA string) (map[
 var safeArg = `[A-Za-z0-9_./:#=,@+%-]+`
 var testPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`^ruby ` + safeArg + `_test\.rb$`),
+	regexp.MustCompile(`^ruby -c ` + safeArg + `\.rb$`),
 	regexp.MustCompile(`^bundle exec rspec(?: ` + safeArg + `)*$`),
 	regexp.MustCompile(`^(?:bin/rails|bundle exec rails) test(?: ` + safeArg + `)*$`),
 	regexp.MustCompile(`^(?:rake|bundle exec rake) test(?: ` + safeArg + `)*$`),

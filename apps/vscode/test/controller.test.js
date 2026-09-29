@@ -22,7 +22,7 @@ function fakeEnvironment(folder, url) {
     ShellExecution: class { constructor(command, args, options) { Object.assign(this, { command, args, options }); } },
     Task: class { constructor(definition, scope, name, source, execution) { Object.assign(this, { definition, scope, name, source, execution }); } },
     tasks: { executeTask: async task => { const execution = { task, terminate: () => { execution.terminated = true; } }; executions.push(execution); return execution; } },
-    Uri: { from: value => makeUri(`${value.authority}${value.path}`, value.scheme), joinPath: (uri, ...parts) => makeUri(path.join(uri.fsPath, ...parts), uri.scheme) },
+    Uri: { from: value => makeUri(`${value.authority}${value.path}`, value.scheme), file: file => makeUri(file), joinPath: (uri, ...parts) => makeUri(path.join(uri.fsPath, ...parts), uri.scheme) },
     window: { createOutputChannel: () => ({ appendLine() {}, append() {}, show() {}, dispose() {} }), createStatusBarItem: () => ({ show() {}, dispose() {} }), showErrorMessage: value => errors.push(value), showInformationMessage() {} },
     workspace: { isTrusted: true, workspaceFolders: [{ name: 'repository', uri: makeUri(folder) }], textDocuments: [],
       getConfiguration: () => ({ inspect: name => ({ globalValue: settings[name], workspaceValue: 'http://evil.test' }) }) },
@@ -50,7 +50,10 @@ test('RSpec repair creates an agent task with nested application context', async
   const { controller, folder, fixture, executions } = await setup(t);
   await fs.mkdir(path.join(folder, 'server', 'spec'), { recursive: true });
   await fs.writeFile(path.join(folder, 'server', 'Gemfile'), '');
+  let prepared = false;
+  controller.prepareRails = async () => { prepared = true; };
   await controller.createTask('fix rspec issue');
+  assert.equal(prepared, true, 'Rails test environment must be prepared before submission');
   assert.equal(executions.length, 0, 'repair must not stop at a terminal test run');
   assert.equal(fixture.tasks.length, 1);
   assert.match(controller.task.user_request, /Detected RSpec application directories.*server/);

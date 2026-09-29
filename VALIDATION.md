@@ -1,5 +1,13 @@
 # Validation — 28 September 2026
 
+## Additional checks — 29 September 2026
+
+- SmartGuruji's Rails app was prepared in an isolated Ruby 3.4.2 image with its locked gems and a disposable PostgreSQL database. OVX ran the full RSpec suite from the nested `server` directory: **141 examples, 1 failure**. The remaining failure is a 429 quota expectation receiving 201; it is a project logic or fixture issue, not a missing Gemfile/dependency error.
+- A new Ruby starter project was created in a non-Git folder, registered with OVX, snapshotted, and its Minitest suite passed inside the runtime sandbox: **1 run, 1 assertion, 0 failures**.
+- With the real local model, starter task 7 added `Project.add` and a matching assertion. OVX ran `ruby test/project_test.rb` successfully, produced a two-file diff, and left the source unchanged until the reviewed patch was accepted. Independent Minitest after acceptance passed: **1 run, 1 assertion, 0 failures**.
+- Extension: **19 tests passed**; API: **38 runs, 133 assertions passed**; Go runtime suite passed; CLI/project-preparation: **9 tests passed**.
+- The actual SmartGuruji repair has not been verified as complete. OVX's 3B local model does not guarantee correct diagnosis or edits for complex Rails code.
+
 ## Repair workflow update (0.1.2)
 
 - Repair prompts such as `fix rspec issue` now create coding tasks, with detected nested application directories included as context.
