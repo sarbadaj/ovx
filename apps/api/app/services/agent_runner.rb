@@ -212,6 +212,9 @@ class AgentRunner
     event("tool_completed", tool_call_id: call.id, tool: call.tool_name, result: truncate(result))
     append("user", "TOOL RESULT #{call.tool_name}: #{JSON.generate(truncate(result))}")
     persist_transcript!
+    if call.tool_name == "run_tests" && result["exit_code"].to_i != 0 && result["output"].to_s.include?("Bundler::GemNotFound")
+      raise AgentError, "Tests could not start: the sandbox lacks this project's locked gems. Prepare its Rails environment using bin/ovx_prepare_rails.py with the repository path and --cwd application directory, then retry. No test failure has been diagnosed yet."
+    end
   rescue RuntimeClient::RuntimeError => error
     attempt&.update!(state: "failed", finished_at: Time.current, error_message: error.message)
     call.update!(state: "failed", completed_at: Time.current)
@@ -225,9 +228,9 @@ class AgentRunner
     return validation_needed!("Resolve pending approvals before finishing.") if @task.approvals.where(status: "pending").exists?
     mutation = @task.tool_calls.where(tool_name: MUTATING_TOOLS, state: %w[completed failed unknown]).last
     changes = @runtime.diff_workspace(workspace: @task.workspace_path, base_revision: @task.base_revision)
-    return true if changes.fetch("files", []).empty? && !mutation
-
     test = @task.tool_calls.where(tool_name: "run_tests").last
+    return true if changes.fetch("files", []).empty? && !mutation && !test
+
     attempt = test&.tool_attempts&.last
     unless test && test.state == "completed" && attempt&.exit_code == 0 && (!mutation || test.id > mutation.id)
       return validation_needed!("The latest code changes need a successful targeted test run. Earlier passing tests or a later failing test do not validate this patch. Run relevant tests before finishing.")

@@ -594,17 +594,35 @@ func runDockerAt(workspace string, command []string, cwd string) (string, int, e
 	state.mu.Unlock()
 	defer func() { state.mu.Lock(); state.cancel = nil; state.mu.Unlock() }()
 	name := fmt.Sprintf("ovx-%s-%d", filepath.Base(workspace), time.Now().UnixNano())
+	image := sandboxImage
+	if meta, err := readMetadata(workspace); err == nil {
+		data, err := os.ReadFile(filepath.Join(workspaceRoot, ".ovx", "sandbox-images.json"))
+		if err == nil {
+			var profiles map[string]string
+			if err := json.Unmarshal(data, &profiles); err != nil {
+				return "", 1, errors.New("invalid sandbox image registry")
+			}
+			relative := strings.TrimPrefix(containerDirectory, "/workspace")
+			relative = strings.TrimPrefix(relative, "/")
+			if relative == "" {
+				relative = "."
+			}
+			if configured := profiles[meta.Repository+"::"+relative]; configured != "" {
+				image = configured
+			}
+		}
+	}
 	args := []string{
 		"run", "--rm", "--pull=never", "--name", name, "--network", "none",
 		"--cpus", "2", "--memory", "2g", "--pids-limit", "256",
 		"--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true",
 		"--user", fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid()),
-		"--tmpfs", "/tmp:rw,noexec,nosuid,size=256m",
+		"--tmpfs", "/tmp:rw,noexec,nosuid,size=512m",
 		"-e", "HOME=/tmp", "-e", "RAILS_ENV=test", "-e", "RACK_ENV=test",
 		"-e", "GIT_CONFIG_NOSYSTEM=1", "-e", "GIT_CONFIG_GLOBAL=/dev/null",
 		"--mount", "type=bind,src=" + workspace + ",dst=/workspace",
 		"--mount", "type=bind,src=" + filepath.Join(workspace, ".git") + ",dst=/workspace/.git,readonly",
-		"-w", containerDirectory, sandboxImage,
+		"-w", containerDirectory, image,
 	}
 	args = append(args, command...)
 	cmd := exec.CommandContext(ctx, "docker", args...)

@@ -44,6 +44,20 @@ class AgentRunnerTest < ActiveSupport::TestCase
     assert task.transcript.any? { |message| message['content'].include?('bundle install is unavailable') }
   end
 
+  test "missing sandbox gems stops with environment setup instructions and preserved output" do
+    task = make_task
+    runtime = FakeRuntime.new
+    def runtime.execute(**)
+      { 'output' => 'Bundler::GemNotFound: missing project gems', 'exit_code' => 1 }
+    end
+    error = assert_raises(AgentRunner::AgentError) do
+      AgentRunner.new(task, model: ScriptedModel.new(tool('run_tests')), runtime: runtime).run
+    end
+    assert_match 'ovx_prepare_rails.py', error.message
+    assert_equal 1, task.tool_calls.last.tool_attempts.last.exit_code
+    assert_empty task.approvals
+  end
+
   test "repeated failed path is replaced with repository discovery" do
     task = make_task
     runtime = FakeRuntime.new(changed: false)
@@ -92,6 +106,15 @@ class AgentRunnerTest < ActiveSupport::TestCase
     AgentRunner.new(task, model: model, runtime: runtime).run
     assert_equal "completed", task.reload.state
     assert_equal 3, runtime.calls.count("run_tests")
+  end
+
+  test "a failed test cannot be declared completed just because no files changed" do
+    task = make_task
+    runtime = FakeRuntime.new(changed: false, exit_codes: [1, 0])
+    model = ScriptedModel.new(tool('run_tests'), finish, tool('run_tests'), tool('git_diff'), finish)
+    AgentRunner.new(task, model: model, runtime: runtime).run
+    assert_equal 2, runtime.calls.count('run_tests')
+    assert_equal 'completed', task.reload.state
   end
 
   test "model final with no edits can finish without fake test claims enforced by edit rule" do

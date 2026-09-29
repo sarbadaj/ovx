@@ -142,6 +142,33 @@ class Controller {
     await this.connect();
   }
 
+  async prepareRails() {
+    this.trust();
+    const folder = this.folder();
+    if (!folder) throw new Error('Open the Rails project folder first.');
+    const installation = await this.installation();
+    if (!installation) return;
+    const roots = await rspecRoots(folder.uri.fsPath);
+    if (!roots.length) throw new Error('No application containing Gemfile and spec was found.');
+    let app = roots[0];
+    if (roots.length > 1) {
+      const choice = await this.vscode.window.showQuickPick(roots.map(root => ({ label: path.relative(folder.uri.fsPath, root) || '.', directory: root })), { title: 'Prepare Rails test environment' });
+      if (!choice) return;
+      app = choice.directory;
+    }
+    const repository = await fs.realpath(folder.uri.fsPath);
+    this.output.show(true);
+    this.output.appendLine('Preparing project gems and an isolated test PostgreSQL. First setup downloads dependencies.');
+    await new Promise((resolve, reject) => {
+      const child = spawn('python3', [path.join(installation, 'bin', 'ovx_prepare_rails.py'), repository, '--cwd', path.relative(repository, app) || '.'], { cwd: installation, shell: false });
+      child.stdout.on('data', chunk => this.output.append(chunk.toString()));
+      child.stderr.on('data', chunk => this.output.append(chunk.toString()));
+      child.once('error', reject);
+      child.once('close', code => code === 0 ? resolve() : reject(new Error('Rails environment setup failed. See OVX output for details.')));
+    });
+    this.vscode.window.showInformationMessage('Rails test environment ready. Retry the failed task.');
+  }
+
   async connect() {
     this.trust();
     const url = serviceUrl(this.setting('serviceUrl', 'http://127.0.0.1:3000'));
@@ -441,6 +468,7 @@ class Controller {
         case 'setToken': return this.setToken();
         case 'importToken': return this.importToken();
         case 'startService': return this.startService();
+        case 'prepareRails': return this.prepareRails();
         case 'folder': return this.selectFolder(message.uri);
         case 'create': return this.createTask(message.request);
         case 'runRSpec': return this.runLocalRSpec();
@@ -482,7 +510,7 @@ function webviewHtml(webview, vscode, media) {
     <div class="toolbar"><button data-message="connect">Connect</button><button class="secondary" data-message="startService">Start service</button><button class="secondary" data-message="setToken">Set token</button><button class="secondary" data-message="importToken">Import token</button></div>
     <label for="folder">Repository</label><select id="folder" aria-label="Workspace repository"></select><p id="folderPath" class="muted"></p>
     <form id="promptForm"><label for="prompt">What should OVX do?</label><textarea id="prompt" rows="5" maxlength="20000" placeholder="run full rspec — or describe a coding task" required></textarea><button id="submit" type="submit">Run task</button><span class="muted shortcut">⌘ / Ctrl + Enter</span></form>
-    <p class="muted">“run full rspec” runs project tests in your local terminal. Coding requests use the OVX agent.</p><button class="secondary" data-message="runRSpec">Run full RSpec in project</button>
+    <p class="muted">“run full rspec” runs project tests in your local terminal. Coding requests use the OVX agent.</p><div class="toolbar"><button class="secondary" data-message="runRSpec">Run full RSpec in project</button><button class="secondary" data-message="prepareRails">Prepare Rails environment</button></div>
     <section id="localTest" hidden><div class="section-title"><h2>Project RSpec · local execution</h2><span id="localTestState" class="badge"></span></div><pre id="localTestCommand"></pre><p id="localTestPath" class="muted"></p><p id="localTestResult" class="preserve"></p><p class="muted">Output is in the integrated task terminal. Uses this project’s shell environment and files on disk.</p><div id="localTestActions" class="toolbar"></div></section>
     <section><div class="section-title"><h2>Tasks</h2><button class="secondary small" data-message="refresh">Refresh</button></div><select id="history" aria-label="Task history"><option value="">No tasks yet</option></select></section>
     <main id="task" hidden><div class="section-title"><h2 id="taskTitle"></h2><span id="taskState" class="badge"></span></div><p id="request" class="preserve"></p><p id="revision" class="muted"></p><div id="taskError" class="error" hidden></div><div id="taskActions" class="toolbar"></div>
@@ -508,6 +536,7 @@ function activate(context) {
     'ovx.importToken': () => controller.importToken(),
     'ovx.startService': () => controller.startService(),
     'ovx.runRSpec': () => controller.runLocalRSpec(),
+    'ovx.prepareRails': () => controller.prepareRails(),
     'ovx.cancelRSpec': () => controller.cancelLocalRSpec(),
     'ovx.refresh': () => controller.connected ? controller.refresh(true) : controller.connect()
   };

@@ -2,7 +2,7 @@
   "name": "ovx-local",
   "displayName": "OVX — Local Coding Agent",
   "description": "Run OVX on your machine: prompt, inspect tests and diffs, and accept changes in VS Code.",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "publisher": "ompirit",
   "license": "UNLICENSED",
   "engines": { "vscode": "^1.90.0" },
@@ -29,6 +29,7 @@
       { "command": "ovx.importToken", "title": "Import Token from OVX Installation", "category": "OVX" },
       { "command": "ovx.startService", "title": "Start Local Service", "category": "OVX" },
       { "command": "ovx.runRSpec", "title": "Run Full RSpec in Project", "category": "OVX" },
+      { "command": "ovx.prepareRails", "title": "Prepare Rails Test Environment", "category": "OVX" },
       { "command": "ovx.cancelRSpec", "title": "Cancel Project RSpec Run", "category": "OVX" },
       { "command": "ovx.refresh", "title": "Refresh Tasks", "category": "OVX", "icon": "$(refresh)" }
     ],

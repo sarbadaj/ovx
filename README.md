@@ -38,7 +38,17 @@ Run commands from the OVX checkout. Service hosts are macOS or Linux; the manage
 
 `setup-model` installs checksum-verified **llama.cpp b11207** and **Qwen2.5-Coder-3B-Instruct Q4_K_M** and configures managed local inference. `start` manages the model, runtime, API, and worker together. A 3B model on an 8 GB machine is a constrained starting point: use small, targeted tasks and inspect tests and diffs carefully. Larger Rails changes may exceed its reasoning, context, or available-memory capacity. A configured model does not guarantee that an arbitrary coding task will succeed.
 
-The generated VSIX is [`apps/vscode/dist/ovx-local-0.1.2.vsix`](apps/vscode/dist/ovx-local-0.1.2.vsix). If `code` is unavailable, run `./bin/ovx package-extension`, then use **Extensions → … → Install from VSIX**. Reload VS Code when prompted.
+The generated VSIX is [`apps/vscode/dist/ovx-local-0.1.3.vsix`](apps/vscode/dist/ovx-local-0.1.3.vsix). If `code` is unavailable, run `./bin/ovx package-extension`, then use **Extensions → … → Install from VSIX**. Reload VS Code when prompted.
+
+For a Rails project, use **Prepare Rails environment** in the sidebar once before requesting repairs. It builds an image from the application's `.ruby-version`, `Gemfile`, and `Gemfile.lock`. Downloads happen during setup. Test runs use that image with a disposable PostgreSQL database inside the network-disabled container; they do not use your host database or `.env`. The application needs `db/schema.rb` or its configured schema-load equivalent. External service integration tests still require project-specific fixtures or service setup.
+
+The equivalent setup command for a nested application is:
+
+```bash
+python3 bin/ovx_prepare_rails.py /absolute/project --cwd server
+```
+
+Re-run preparation when locked dependencies change. Then submit `Fix the failing RSpec tests` in the sidebar; `run full rspec` alone is the direct local test runner.
 
 ## Use the extension
 
