@@ -45,7 +45,7 @@ class ConfigTest(unittest.TestCase):
 
     def test_initialize_preserves_existing_config_and_creates_private_tokens(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             (root / ".env.example").write_text("OVX_API_TOKEN=\nOVX_RUNTIME_TOKEN=\nSECRET_KEY_BASE=\n")
             with patch.object(cli, "ROOT", root), patch.object(cli, "STATE", root / ".ovx"):
                 cli.initialize()
@@ -86,6 +86,32 @@ class ProcessTest(unittest.TestCase):
             self.assertNotEqual(created, existing)
             self.assertEqual((existing / "important.txt").read_text(), "user work")
             self.assertTrue((created / ".git").is_dir())
+
+    def test_run_rspec_uses_nested_sandbox_snapshot_without_project_secrets(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            app = root / 'source/server'
+            (app / 'spec').mkdir(parents=True)
+            (app / 'Gemfile').write_text("gem 'pg'\n")
+            (app / '.env').write_text('PRIVATE=secret\n')
+            workspace = root / 'workspaces'
+            registry = workspace / '.ovx/sandbox-images.json'
+            registry.parent.mkdir(parents=True)
+            registry.write_text(json.dumps({str(app.parent) + '::server': 'test-project-image'}))
+            env = {'OVX_WORKSPACE_ROOT': str(workspace)}
+            def docker(command, **_):
+                self.assertEqual(command[0:2], ['docker', 'run'])
+                self.assertIn('test-project-image', command)
+                snapshot = Path(command[command.index('--mount') + 1].split('src=')[1].split(',dst=')[0])
+                self.assertTrue((snapshot / 'Gemfile').is_file())
+                self.assertFalse((snapshot / '.env').exists())
+                self.assertEqual(command[-3:], ['bundle', 'exec', 'rspec'])
+                return subprocess.CompletedProcess(command, 0)
+            with patch.object(cli, 'run') as prepare, patch.object(cli.subprocess, 'run', side_effect=docker):
+                cli.run_rspec(env, [str(app.parent), '--cwd', 'server'])
+            self.assertEqual(prepare.call_count, 1)
+            with self.assertRaises(ValueError):
+                cli.run_rspec(env, [str(app.parent), '--cwd', '..'])
 
 
 if __name__ == "__main__":

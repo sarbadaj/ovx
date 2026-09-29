@@ -38,7 +38,7 @@ Run commands from the OVX checkout. Service hosts are macOS or Linux; the manage
 
 `setup-model` installs checksum-verified **llama.cpp b11207** and **Qwen2.5-Coder-3B-Instruct Q4_K_M** and configures managed local inference. `start` manages the model, runtime, API, and worker together. A 3B model on an 8 GB machine is a constrained starting point: use small, targeted tasks and inspect tests and diffs carefully. Larger Rails changes may exceed its reasoning, context, or available-memory capacity. A configured model does not guarantee that an arbitrary coding task will succeed.
 
-The generated VSIX is [`apps/vscode/dist/ovx-local-0.1.5.vsix`](apps/vscode/dist/ovx-local-0.1.5.vsix). If `code` is unavailable, run `./bin/ovx package-extension`, then use **Extensions → … → Install from VSIX**. Reload VS Code when prompted.
+The generated VSIX is [`apps/vscode/dist/ovx-local-0.1.7.vsix`](apps/vscode/dist/ovx-local-0.1.7.vsix). If `code` is unavailable, run `./bin/ovx package-extension`, then use **Extensions → … → Install from VSIX**. Reload VS Code when prompted.
 
 Use **New Ruby project** in the OVX sidebar to create a small tested Ruby starter in a folder you choose. The project opens in VS Code; submit a feature task after connecting. The agent supports Ruby/Rails tests in the configured sandbox. Other languages require a suitable runtime image before their tests can run.
 
@@ -50,7 +50,9 @@ The equivalent setup command for a nested application is:
 python3 bin/ovx_prepare_rails.py /absolute/project --cwd server
 ```
 
-Re-run preparation when locked dependencies change. Then submit `Fix the failing RSpec tests` in the sidebar; `run full rspec` alone is the direct local test runner.
+Re-run preparation when locked dependencies change. Then submit `Fix the failing RSpec tests` in the sidebar; `run full rspec` alone runs the complete suite in an isolated project sandbox.
+
+You can run the same suite without VS Code: `./bin/ovx run-rspec /absolute/path/to/project --cwd server`. Omit `--cwd server` when the `Gemfile` and `spec` directory are at the project root.
 
 ## Use the extension
 
@@ -87,7 +89,7 @@ The demo images cover the bundled fixtures. Your Rails application needs its Rub
 OVX_SANDBOX_IMAGE=my-project-ovx-sandbox
 ```
 
-Run `./bin/ovx restart` after changing the image. Tests run with Docker networking disabled: they cannot reach host PostgreSQL, Redis, external APIs, or OVX’s control-plane database. Use tests needing no external service, or configure an entirely container-local database such as SQLite. Install dependencies while building the image before submitting a task. OVX does not automatically install a project’s gems or start its test database services.
+Run `./bin/ovx restart` after changing the image. Tests run with Docker networking disabled: they cannot reach host PostgreSQL, Redis, external APIs, or OVX’s control-plane database. Rails projects using `pg` or `sqlite3` get their locked gems during image preparation and a disposable container-local test database. Other external services still need project-specific test fixtures or container-local setup.
 
 ## CLI and diagnostics
 

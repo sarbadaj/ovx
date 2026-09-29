@@ -6,7 +6,7 @@ Use your local OVX service from the VS Code sidebar: submit a coding task, follo
 
 1. Set up OVX from the repository root with `./bin/setup`, configure your model and workspace root, then run `./bin/ovx start`.
 2. Build the extension from this directory: `npm run package`. It needs Node.js and Python 3, with no npm dependencies or downloads.
-3. Install `dist/ovx-local-0.1.5.vsix` using **Extensions → … → Install from VSIX**, or `code --install-extension dist/ovx-local-0.1.5.vsix`.
+3. Install `dist/ovx-local-0.1.7.vsix` using **Extensions → … → Install from VSIX**, or `code --install-extension dist/ovx-local-0.1.7.vsix`.
 4. Open any local project folder, including a dirty or non-Git folder. Trust the workspace in VS Code; saved files are snapshotted for agent tasks.
 5. Open the OVX activity bar. Click **Set token** and paste `OVX_API_TOKEN` from the OVX installation’s `.env`. Alternatively, choose **Import token**, explicitly select the OVX installation directory, and import its token.
 6. Click **Connect**, select the repository when using a multi-root workspace, and submit a task such as “Fix this failing RSpec test. Run the relevant tests and inspect the diff.”
@@ -44,7 +44,7 @@ Command Palette commands use the **OVX:** prefix: **Open Agent**, **Connect to L
 - **Connection refused:** run `bin/ovx status` and `bin/ovx doctor`, then `bin/ovx start` from the OVX installation. Check the **OVX** output channel and `bin/ovx logs`.
 - **Unauthorized:** import the current `OVX_API_TOKEN` again. API and runtime tokens are different; use the API token in this extension.
 - **Repository rejected:** reconnect the selected folder and save editor buffers. OVX enrolls the exact folder and supports uncommitted/non-Git projects.
-- **Run full RSpec:** type `run full rspec`, `run rspec`, `run rspec of this project`, or use **Run full RSpec in project**. OVX detects a nested `Gemfile` + `spec` folder (including `SmartGuruji/server`) and runs `bundle exec rspec` in the integrated terminal.
+- **Run full RSpec:** type `run full rspec`, `run rspec`, `run rspec of this project`, or use **Run full RSpec in project**. OVX detects a nested `Gemfile` + `spec` folder (including `SmartGuruji/server`), prepares its locked gems, then runs `bundle exec rspec` in an isolated Docker copy. Output appears in the integrated terminal; host Ruby and the host database are not required.
 - **Task remains queued:** inspect Sidekiq and model status from the CLI.
 - **Task timed out during submission:** click **Refresh** and inspect history before submitting again; the service may already have accepted the task.
 - **Accept rejected:** inspect `git status`, save editor buffers, and verify the source revision has not changed. Start a fresh task if the base has moved.

@@ -19,7 +19,7 @@ function fakeEnvironment(folder, url) {
   const vscode = {
     StatusBarAlignment: { Left: 1 }, ConfigurationTarget: { Global: 1 },
     TaskRevealKind: { Always: 1 }, TaskPanelKind: { Dedicated: 2 },
-    ShellExecution: class { constructor(command, args, options) { Object.assign(this, { command, args, options }); } },
+    ProcessExecution: class { constructor(command, args, options) { Object.assign(this, { command, args, options }); } },
     Task: class { constructor(definition, scope, name, source, execution) { Object.assign(this, { definition, scope, name, source, execution }); } },
     tasks: { executeTask: async task => { const execution = { task, terminate: () => { execution.terminated = true; } }; executions.push(execution); return execution; } },
     Uri: { from: value => makeUri(`${value.authority}${value.path}`, value.scheme), file: file => makeUri(file), joinPath: (uri, ...parts) => makeUri(path.join(uri.fsPath, ...parts), uri.scheme) },
@@ -42,6 +42,7 @@ async function setup(t) {
   t.after(() => fs.rm(folder, { recursive: true, force: true }));
   const environment = fakeEnvironment(folder, fixture.url);
   const controller = new Controller(environment.vscode, environment.context);
+  controller.installation = async () => '/ovx/install';
   t.after(() => controller.dispose());
   return { fixture, folder, controller, ...environment };
 }
@@ -168,9 +169,9 @@ test('explicit RSpec request runs the nested project directly without Git, API o
   assert.equal(controller.error, '');
   assert.equal(fixture.requests.length, 0);
   assert.equal(executions.length, 1);
-  assert.equal(executions[0].task.execution.command, 'bundle');
-  assert.deepEqual(executions[0].task.execution.args, ['exec', 'rspec']);
-  assert.deepEqual(executions[0].task.execution.options, { cwd: await fs.realpath(server), env: { RAILS_ENV: 'test', RACK_ENV: 'test' } });
+  assert.equal(executions[0].task.execution.command, '/ovx/install/bin/ovx');
+  assert.deepEqual(executions[0].task.execution.args, ['run-rspec', await fs.realpath(folder), '--cwd', 'server']);
+  assert.deepEqual(executions[0].task.execution.options, { cwd: '/ovx/install' });
   assert.equal(controller.localTest.state, 'running');
   controller.finishLocalRSpec({ execution: executions[0], exitCode: 1 });
   assert.equal(controller.localTest.state, 'completed');

@@ -3,6 +3,7 @@ import argparse
 import fcntl
 import json
 import os
+import tempfile
 from pathlib import Path
 import re
 import secrets
@@ -334,6 +335,33 @@ def smoke(env):
     print(f"OVX MOCK SMOKE TEST PASSED\nTask: {task['id']}\nSource: {target}")
 
 
+def run_rspec(env, args):
+    if len(args) not in (1, 3) or (len(args) == 3 and args[1] != "--cwd"):
+        raise RuntimeError("Usage: bin/ovx run-rspec /absolute/project [--cwd server]")
+    repository = Path(args[0]).expanduser().resolve(strict=True)
+    app = (repository / (args[2] if len(args) == 3 else ".")).resolve(strict=True)
+    relative = app.relative_to(repository)
+    if not app.is_dir() or not (app / "Gemfile").is_file() or not (app / "spec").is_dir():
+        raise RuntimeError("RSpec application must contain Gemfile and spec")
+    run(["python3", ROOT / "bin/ovx_prepare_rails.py", repository, "--cwd", str(relative)], env)
+    registry = Path(env["OVX_WORKSPACE_ROOT"]) / ".ovx/sandbox-images.json"
+    image = json.loads(registry.read_text())[str(repository) + "::" + relative.as_posix()]
+    workspace_root = Path(env["OVX_WORKSPACE_ROOT"])
+    workspace_root.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="rspec-", dir=workspace_root) as directory:
+        snapshot = Path(directory) / "project"
+        shutil.copytree(app, snapshot, symlinks=True,
+                        ignore=shutil.ignore_patterns(".git", ".env", ".env.*", "node_modules", "vendor", "tmp", "log", "coverage", "storage", ".bundle", ".ovx"))
+        print(f"Running full RSpec for {app} in an isolated OVX sandbox", flush=True)
+        command = ["docker", "run", "--rm", "--pull=never", "--network", "none", "--cpus", "2", "--memory", "2g", "--pids-limit", "256",
+                   "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true", "--user", f"{os.getuid()}:{os.getgid()}",
+                   "--tmpfs", "/tmp:rw,noexec,nosuid,size=512m", "-e", "HOME=/tmp", "-e", "RAILS_ENV=test", "-e", "RACK_ENV=test",
+                   "--mount", f"type=bind,src={snapshot},dst=/workspace", "-w", "/workspace", image, "bundle", "exec", "rspec"]
+        completed = subprocess.run(command, env=env)
+        if completed.returncode:
+            raise SystemExit(completed.returncode)
+
+
 def dispatch(command, args, env):
     result = None
     if command == "init":
@@ -369,6 +397,8 @@ def dispatch(command, args, env):
         print(demo(env, fixture))
     elif command == "smoke":
         smoke(env)
+    elif command == "run-rspec":
+        run_rspec(env, args)
     elif command == "test":
         run(["go", "test", "./..."], env, ROOT / "services/runtime")
         run(["python3", "-m", "unittest", "discover", "-s", "tests", "-v"], env)
@@ -416,8 +446,8 @@ def dispatch(command, args, env):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="OVX local coding agent and VS Code service")
-    parser.add_argument("command", choices=["init", "setup", "setup-model", "start", "stop", "restart", "status", "doctor", "logs", "repos", "add-repo", "task", "show", "events", "diff", "wait", "approvals", "approve", "deny", "cancel", "retry", "workspace", "apply", "reject", "demo", "smoke", "test", "package-extension", "install-extension"])
-    parser.add_argument("args", nargs="*")
+    parser.add_argument("command", choices=["init", "setup", "setup-model", "start", "stop", "restart", "status", "doctor", "logs", "repos", "add-repo", "task", "show", "events", "diff", "wait", "approvals", "approve", "deny", "cancel", "retry", "workspace", "apply", "reject", "demo", "smoke", "run-rspec", "test", "package-extension", "install-extension"])
+    parser.add_argument("args", nargs=argparse.REMAINDER)
     options = parser.parse_args(argv)
     try:
         initialize()

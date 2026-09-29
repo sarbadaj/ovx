@@ -284,10 +284,12 @@ class Controller {
       if (!selected) return;
       directory = selected.directory;
     }
+    const installation = await this.installation();
+    if (!installation) return;
     const runId = crypto.randomBytes(12).toString('hex');
-    this.localTest = { id: runId, command: 'bundle exec rspec', folderName: folder.name, folderPath: directory, state: 'starting', exitCode: null, startedAt: new Date().toISOString() };
+    this.localTest = { id: runId, command: 'bin/ovx run-rspec', folderName: folder.name, folderPath: directory, state: 'starting', exitCode: null, startedAt: new Date().toISOString() };
     this.publish();
-    const execution = new this.vscode.ShellExecution('bundle', ['exec', 'rspec'], { cwd: directory, env: { RAILS_ENV: 'test', RACK_ENV: 'test' } });
+    const execution = new this.vscode.ProcessExecution(path.join(installation, 'bin', 'ovx'), ['run-rspec', await fs.realpath(folder.uri.fsPath), '--cwd', path.relative(await fs.realpath(folder.uri.fsPath), directory) || '.'], { cwd: installation });
     const task = new this.vscode.Task({ type: 'ovx-rspec', ovxRunId: runId }, folder, 'Run full RSpec', 'OVX', execution, []);
     task.presentationOptions = { reveal: this.vscode.TaskRevealKind.Always, focus: false, panel: this.vscode.TaskPanelKind.Dedicated, clear: true, showReuseMessage: false };
     try {
@@ -526,7 +528,7 @@ function webviewHtml(webview, vscode, media) {
     <label for="folder">Repository</label><select id="folder" aria-label="Workspace repository"></select><p id="folderPath" class="muted"></p>
     <form id="promptForm"><label for="prompt">What should OVX do?</label><textarea id="prompt" rows="5" maxlength="20000" placeholder="run full rspec — or describe a coding task" required></textarea><button id="submit" type="submit">Run task</button><span class="muted shortcut">⌘ / Ctrl + Enter</span></form>
     <p class="muted">“run full rspec” runs project tests in your local terminal. Coding requests use the OVX agent.</p><div class="toolbar"><button class="secondary" data-message="runRSpec">Run full RSpec in project</button><button class="secondary" data-message="prepareRails">Prepare Rails environment</button></div>
-    <section id="localTest" hidden><div class="section-title"><h2>Project RSpec · local execution</h2><span id="localTestState" class="badge"></span></div><pre id="localTestCommand"></pre><p id="localTestPath" class="muted"></p><p id="localTestResult" class="preserve"></p><p class="muted">Output is in the integrated task terminal. Uses this project’s shell environment and files on disk.</p><div id="localTestActions" class="toolbar"></div></section>
+    <section id="localTest" hidden><div class="section-title"><h2>Project RSpec · local execution</h2><span id="localTestState" class="badge"></span></div><pre id="localTestCommand"></pre><p id="localTestPath" class="muted"></p><p id="localTestResult" class="preserve"></p><p class="muted">Output is in the integrated task terminal. Runs in an isolated Docker copy with project gems and a disposable test database.</p><div id="localTestActions" class="toolbar"></div></section>
     <section><div class="section-title"><h2>Tasks</h2><button class="secondary small" data-message="refresh">Refresh</button></div><select id="history" aria-label="Task history"><option value="">No tasks yet</option></select></section>
     <main id="task" hidden><div class="section-title"><h2 id="taskTitle"></h2><span id="taskState" class="badge"></span></div><p id="request" class="preserve"></p><p id="revision" class="muted"></p><div id="taskError" class="error" hidden></div><div id="taskActions" class="toolbar"></div>
     <section id="approvals"></section><section id="planSection"><h2>Plan</h2><pre id="plan"></pre></section><section id="resultSection"><h2>Result</h2><p id="result" class="preserve"></p></section>
