@@ -2,7 +2,7 @@
   "name": "ovx-local",
   "displayName": "OVX — Local Coding Agent",
   "description": "Run OVX on your machine: prompt, inspect tests and diffs, and accept changes in VS Code.",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "publisher": "ompirit",
   "license": "UNLICENSED",
   "engines": { "vscode": "^1.90.0" },

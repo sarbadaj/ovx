@@ -92,6 +92,17 @@ class AgentRunnerTest < ActiveSupport::TestCase
     assert task.transcript.any? { |message| message['content'].include?('server/spec/example_spec.rb') }
   end
 
+  test "ambiguous patch failure tells the model to use unique context" do
+    task = make_task
+    runtime = FakeRuntime.new(changed: false)
+    def runtime.execute(workspace:, tool:, arguments:)
+      raise RuntimeClient::RuntimeError, 'old text must match exactly once; matched 2 times' if tool == 'apply_patch'
+      super
+    end
+    AgentRunner.new(task, model: ScriptedModel.new(tool('apply_patch'), tool('run_tests'), tool('git_diff'), finish), runtime: runtime).run
+    assert task.transcript.any? { |message| message['content'].include?('Include surrounding lines') }
+  end
+
   test "truncated responses are discarded and retried with smaller action guidance" do
     task = make_task
     calls = 0

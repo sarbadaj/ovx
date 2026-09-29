@@ -53,10 +53,13 @@ type DestroyWorkspaceRequest struct {
 }
 
 type FileContent struct {
-	Path    string `json:"path"`
-	SHA256  string `json:"sha256"`
-	Bytes   int    `json:"bytes"`
-	Content string `json:"content"`
+	Path       string `json:"path"`
+	SHA256     string `json:"sha256"`
+	Bytes      int    `json:"bytes"`
+	Content    string `json:"content"`
+	StartLine  int    `json:"start_line,omitempty"`
+	EndLine    int    `json:"end_line,omitempty"`
+	TotalLines int    `json:"total_lines,omitempty"`
 }
 
 var (
@@ -283,7 +286,7 @@ func execute(workspace, tool string, args map[string]interface{}) ExecuteRespons
 		return result(out, err)
 	case "read_file":
 		path, _ := args["path"].(string)
-		out, err := readFile(workspace, path)
+		out, err := readFileRange(workspace, path, args)
 		return result(out, err)
 	case "search_code":
 		query, _ := args["query"].(string)
@@ -445,6 +448,51 @@ func readFile(workspace, relative string) (FileContent, error) {
 		return FileContent{}, errors.New("binary files are not supported by text tools")
 	}
 	return FileContent{Path: relative, SHA256: sha(b), Bytes: len(b), Content: string(b)}, nil
+}
+
+func readFileRange(workspace, relative string, args map[string]interface{}) (FileContent, error) {
+	file, err := readFile(workspace, relative)
+	if err != nil {
+		return file, err
+	}
+	lines := strings.SplitAfter(file.Content, "\n")
+	if lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	startRaw, hasStart := args["start_line"]
+	endRaw, hasEnd := args["end_line"]
+	if !hasStart && !hasEnd {
+		if len(lines) > 200 {
+			file.Content = strings.Join(lines[:200], "")
+			file.StartLine, file.EndLine, file.TotalLines = 1, 200, len(lines)
+		}
+		return file, nil
+	}
+	start, startOK := positiveLine(startRaw)
+	end, endOK := positiveLine(endRaw)
+	if !hasStart || !hasEnd || !startOK || !endOK || end < start || end-start >= 200 {
+		return FileContent{}, errors.New("read_file requires start_line and end_line as a range of at most 200 positive lines")
+	}
+	if start > len(lines) {
+		return FileContent{}, fmt.Errorf("start_line %d exceeds file length %d", start, len(lines))
+	}
+	if end > len(lines) {
+		end = len(lines)
+	}
+	file.Content = strings.Join(lines[start-1:end], "")
+	file.StartLine, file.EndLine, file.TotalLines = start, end, len(lines)
+	return file, nil
+}
+
+func positiveLine(value interface{}) (int, bool) {
+	switch n := value.(type) {
+	case float64:
+		return int(n), n >= 1 && n == float64(int(n))
+	case int:
+		return n, n >= 1
+	default:
+		return 0, false
+	}
 }
 
 func searchCode(workspace, query string) (string, error) {

@@ -28,6 +28,7 @@ class AgentRunner
     {"type":"plan","steps":["step 1","step 2"]}
     {"type":"tool","tool":"list_files","arguments":{}}
     {"type":"tool","tool":"read_file","arguments":{"path":"relative/path"}}
+    {"type":"tool","tool":"read_file","arguments":{"path":"relative/path","start_line":1,"end_line":100}}
     {"type":"tool","tool":"search_code","arguments":{"query":"text"}}
     {"type":"tool","tool":"apply_patch","arguments":{"path":"relative/path","old":"literal source-code text to replace","new":"literal replacement source-code text","expected_sha256":"optional hash from read_file"}}
     {"type":"tool","tool":"create_file","arguments":{"path":"relative/path","content":"new file content"}}
@@ -42,6 +43,7 @@ class AgentRunner
     Rules:
     - Keep every response compact: one action only, short plan steps, and concise final messages. Never include reasoning outside the JSON object.
     - Paths must be repository-relative; do not access secrets or OVX metadata.
+    - read_file returns at most the first 200 lines by default. For other lines, provide start_line and end_line (at most 200 lines per call). The returned SHA256 still covers the complete file.
     - run_command and delete_file require human approval. Approval never bypasses runtime restrictions.
     - Network, git push, deployment, package installation, destructive shell actions, and host access are unavailable.
     - If a tool fails, inspect its observation and choose a safe next step.
@@ -86,7 +88,9 @@ class AgentRunner
     MAX_MODEL_STEPS.times do |index|
       ensure_active!
       begin
+        event("model_generation_started", step: index + 1)
         raw = @model.chat(@messages)
+        event("model_generation_completed", step: index + 1)
       rescue ModelClient::TruncatedAction => error
         truncated_actions += 1
         raise if truncated_actions > 2
@@ -246,6 +250,9 @@ class AgentRunner
     event("tool_failed", tool_call_id: call.id, tool: call.tool_name, error: error.message)
     append("user", "TOOL ERROR #{call.tool_name}: #{error.message}")
     append("user", "The target file already exists. Use apply_patch with actual old and new text; do not delete it.") if call.tool_name == "create_file" && error.message.include?("already exists")
+    if call.tool_name == "apply_patch" && error.message.match?(/matched [2-9]\d* times/)
+      append("user", "Your old text is ambiguous. Include surrounding lines so old matches exactly once, or include both adjacent occurrences in one old/new replacement. Do not repeat the same patch.")
+    end
     persist_transcript!
   end
 

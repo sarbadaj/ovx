@@ -38,7 +38,7 @@ Run commands from the OVX checkout. Service hosts are macOS or Linux; the manage
 
 `setup-model` installs checksum-verified **llama.cpp b11207** and **Qwen2.5-Coder-3B-Instruct Q4_K_M** and configures managed local inference. `start` manages the model, runtime, API, and worker together. A 3B model on an 8 GB machine is a constrained starting point: use small, targeted tasks and inspect tests and diffs carefully. Larger Rails changes may exceed its reasoning, context, or available-memory capacity. A configured model does not guarantee that an arbitrary coding task will succeed.
 
-The generated VSIX is [`apps/vscode/dist/ovx-local-0.1.4.vsix`](apps/vscode/dist/ovx-local-0.1.4.vsix). If `code` is unavailable, run `./bin/ovx package-extension`, then use **Extensions → … → Install from VSIX**. Reload VS Code when prompted.
+The generated VSIX is [`apps/vscode/dist/ovx-local-0.1.5.vsix`](apps/vscode/dist/ovx-local-0.1.5.vsix). If `code` is unavailable, run `./bin/ovx package-extension`, then use **Extensions → … → Install from VSIX**. Reload VS Code when prompted.
 
 Use **New Ruby project** in the OVX sidebar to create a small tested Ruby starter in a folder you choose. The project opens in VS Code; submit a feature task after connecting. The agent supports Ruby/Rails tests in the configured sandbox. Other languages require a suitable runtime image before their tests can run.
 

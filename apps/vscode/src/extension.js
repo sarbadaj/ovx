@@ -231,7 +231,7 @@ class Controller {
     this.trust();
     if (!this.connected) await this.connect();
     const folder = this.folder();
-    if (!folder) throw new Error('Open a local Git repository folder in VS Code first.');
+    if (!folder) throw new Error('Open a local project folder in VS Code first.');
     if (!this.repository) this.repository = await this.client.request('POST', '/api/repositories', { name: folder.name, path: await fs.realpath(folder.uri.fsPath) });
     return this.repository;
   }

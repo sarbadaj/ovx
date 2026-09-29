@@ -439,3 +439,26 @@ func TestIgnoredNewFilesRemainReviewable(t *testing.T) {
 		t.Fatal("ignored explicit file not accepted")
 	}
 }
+
+func TestReadFileRangeReturnsBoundedLinesAndFullHash(t *testing.T) {
+	repository := runtimeFixture(t)
+	full, err := readFile(repository, "calculator.rb")
+	if err != nil {
+		t.Fatal(err)
+	}
+	partial, err := readFileRange(repository, "calculator.rb", map[string]interface{}{"start_line": float64(2), "end_line": float64(2)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if partial.Content != "  a - b\n" || partial.SHA256 != full.SHA256 || partial.StartLine != 2 || partial.EndLine != 2 || partial.TotalLines != 3 {
+		t.Fatalf("unexpected bounded read: %+v", partial)
+	}
+	if _, err := readFileRange(repository, "calculator.rb", map[string]interface{}{"start_line": 0, "end_line": 2}); err == nil {
+		t.Fatal("invalid line range accepted")
+	}
+	writeTestFile(t, filepath.Join(repository, "long.rb"), strings.Repeat("line\n", 201))
+	defaultRead, err := readFileRange(repository, "long.rb", nil)
+	if err != nil || defaultRead.TotalLines != 201 || defaultRead.EndLine != 200 || strings.Count(defaultRead.Content, "\n") != 200 {
+		t.Fatalf("large default read was not bounded: %+v, %v", defaultRead, err)
+	}
+}
