@@ -8,6 +8,7 @@ class AgentRunner
   MAX_MODEL_STEPS = 64
   ALLOWED_TOOLS = %w[list_files read_file search_code apply_patch create_file delete_file run_command run_tests git_status git_diff git_log].freeze
   MUTATING_TOOLS = %w[apply_patch create_file delete_file run_command].freeze
+  OBSERVATION_TOOLS = %w[list_files read_file search_code].freeze
   TOOL_CAPABILITIES = {
     "list_files" => %w[filesystem.read], "read_file" => %w[filesystem.read],
     "search_code" => %w[filesystem.read process.execute],
@@ -49,6 +50,7 @@ class AgentRunner
     - If a tool fails, inspect its observation and choose a safe next step.
     - Always begin with list_files. Projects may contain a nested application directory (for example server/); use the actual directory containing Gemfile/spec before reading or running tests.
     - Never repeat an identical failed tool call. Correct the relative path from the error or list the directory first.
+    - Do not repeat an identical list_files, read_file, or search_code call without an intervening edit. Narrow a broad search, request different file lines, or finish with the evidence already available.
     - For nested applications, run_tests accepts a cwd argument, e.g. {"command":"bundle exec rspec","cwd":"server"}. File paths still start at the repository root, e.g. server/spec/example_spec.rb.
     - For a new Ruby project, add focused Minitest tests and run them with run_tests; use ruby -c for syntax checks.
     - Use apply_patch to edit an existing file; create_file is only for a path that does not exist. Never delete an existing file merely to replace or update it. The old/new fields are actual file contents, not hashes.
@@ -147,6 +149,12 @@ class AgentRunner
     raise AgentError, "The local model repeated an invalid #{tool} action three times. Review the task and retry with a narrower request or a stronger model." if @rejected_actions[key] >= 3
   end
 
+  def reject_repeated_observation!(tool, arguments)
+    key = Digest::SHA256.hexdigest(JSON.generate([tool, arguments]))
+    @rejected_actions[key] += 1
+    raise AgentError, "The local model repeated the same #{tool} observation three times without new edits. Retry with a narrower task or a stronger model." if @rejected_actions[key] >= 3
+  end
+
   def initial_messages
     [{ "role" => "system", "content" => SYSTEM_PROMPT },
      { "role" => "user", "content" => "Project: #{@task.repository.name}\nWorkspace: isolated snapshot of the project’s current saved files, including uncommitted changes. Its Git baseline belongs to this task; the source folder may not use Git. A repository can contain a nested app directory; discover it before using paths.\nTask: #{@task.user_request}" }]
@@ -193,6 +201,16 @@ class AgentRunner
       return false
     end
     previous = @task.tool_calls.where(tool_name: tool).last
+    if OBSERVATION_TOOLS.include?(tool)
+      latest_edit_id = @task.tool_calls.where(tool_name: MUTATING_TOOLS, state: "completed").maximum(:id).to_i
+      repeated = @task.tool_calls.where(tool_name: tool).where("id > ?", latest_edit_id).order(id: :desc).limit(100).any? { |call| call.arguments == arguments && call.state == "completed" }
+      if repeated
+        reject_repeated_observation!(tool, arguments)
+        append("user", "This exact #{tool} observation was already returned and no file was edited since. Use the earlier result, narrow the query or choose different lines; then continue or finish. Do not request it again.")
+        persist_transcript!
+        return false
+      end
+    end
     if previous && previous.arguments == arguments && previous.state == "failed"
       reject_repeated_action!(tool, arguments)
       append("user", "This exact tool call already failed. Inspect this repository listing and correct the path or command before retrying.")

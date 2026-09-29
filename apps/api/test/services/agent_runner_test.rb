@@ -92,6 +92,26 @@ class AgentRunnerTest < ActiveSupport::TestCase
     assert task.transcript.any? { |message| message['content'].include?('server/spec/example_spec.rb') }
   end
 
+  test "identical successful search is not rerun without an edit" do
+    task = make_task
+    runtime = FakeRuntime.new(changed: false)
+    search = { type: 'tool', tool: 'search_code', arguments: { query: 'SmartGuruji' } }
+    AgentRunner.new(task, model: ScriptedModel.new(search, search, finish), runtime: runtime).run
+    assert_equal ['search_code'], runtime.calls
+    assert task.transcript.any? { |message| message['content'].include?('already returned and no file was edited') }
+  end
+
+  test "persistent identical observations stop instead of looping forever" do
+    task = make_task
+    runtime = FakeRuntime.new(changed: false)
+    read = { type: 'tool', tool: 'read_file', arguments: { path: 'docs/README.md' } }
+    error = assert_raises(AgentRunner::AgentError) do
+      AgentRunner.new(task, model: ScriptedModel.new(read, read, read, read), runtime: runtime).run
+    end
+    assert_match 'repeated the same read_file observation', error.message
+    assert_equal ['read_file'], runtime.calls
+  end
+
   test "ambiguous patch failure tells the model to use unique context" do
     task = make_task
     runtime = FakeRuntime.new(changed: false)
