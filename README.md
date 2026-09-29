@@ -42,7 +42,7 @@ The generated VSIX is [`apps/vscode/dist/ovx-local-0.1.4.vsix`](apps/vscode/dist
 
 Use **New Ruby project** in the OVX sidebar to create a small tested Ruby starter in a folder you choose. The project opens in VS Code; submit a feature task after connecting. The agent supports Ruby/Rails tests in the configured sandbox. Other languages require a suitable runtime image before their tests can run.
 
-For a Rails project, OVX prepares its test image when you submit a coding task. **Prepare Rails environment** also lets you run this setup separately. It builds an image from the application's `.ruby-version`, `Gemfile`, and `Gemfile.lock`. Downloads happen during setup. Test runs use that image with a disposable PostgreSQL database inside the network-disabled container; they do not use your host database or `.env`. The application needs `db/schema.rb` or its configured schema-load equivalent. External service integration tests still require project-specific fixtures or service setup.
+For a Rails project, OVX prepares its test image when you submit a coding task. **Prepare Rails environment** also lets you run this setup separately. It selects Ruby from `.ruby-version` or `Gemfile.lock` and builds from the application's locked gems. Downloads happen during setup. Test runs use that image with a disposable PostgreSQL or SQLite database inside the network-disabled container; they do not use your host database or `.env`. The application needs `db/schema.rb` or its configured schema-load equivalent. External service integration tests still require project-specific fixtures or service setup.
 
 The equivalent setup command for a nested application is:
 
