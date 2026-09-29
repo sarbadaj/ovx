@@ -117,6 +117,19 @@ class AgentRunnerTest < ActiveSupport::TestCase
     assert_empty task.tool_calls
   end
 
+  test "large tool output is preserved for review but bounded in model context" do
+    task = make_task
+    runtime = FakeRuntime.new(changed: false)
+    def runtime.execute(**)
+      { "output" => "search match\n" * 1_000, "exit_code" => 0 }
+    end
+    AgentRunner.new(task, model: ScriptedModel.new(tool('search_code'), finish), runtime: runtime).run
+    observed = task.reload.transcript.find { |message| message['content'].start_with?('TOOL RESULT search_code:') }
+    assert_operator observed['content'].bytesize, :<, 8_000
+    assert_includes observed['content'], 'narrower search'
+    assert_operator task.tool_calls.first.tool_attempts.first.result['output'].bytesize, :>, 8_000
+  end
+
   test "completion requires passing tests and diff after latest edit" do
     task = make_task
     runtime = FakeRuntime.new

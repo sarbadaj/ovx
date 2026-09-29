@@ -20,7 +20,7 @@ class ModelClient
     @json_mode = ENV.fetch("MODEL_JSON_MODE", "false") == "true"
     @timeout = Integer(ENV.fetch("MODEL_TIMEOUT_SECONDS", "180"))
     @max_tokens = Integer(ENV.fetch("MODEL_MAX_TOKENS", "4096"))
-    @context_bytes = Integer(ENV.fetch("MODEL_CONTEXT_BYTES", "60000"))
+    @context_bytes = Integer(ENV.fetch("MODEL_CONTEXT_BYTES", "30000"))
   end
 
   def chat(messages)

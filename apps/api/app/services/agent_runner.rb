@@ -239,7 +239,7 @@ class AgentRunner
     attempt.update!(state: "completed", finished_at: Time.current, exit_code: result["exit_code"], result: truncate(result))
     call.update!(state: "completed", completed_at: Time.current)
     event("tool_completed", tool_call_id: call.id, tool: call.tool_name, result: truncate(result))
-    append("user", "TOOL RESULT #{call.tool_name}: #{JSON.generate(truncate(result))}")
+    append("user", "TOOL RESULT #{call.tool_name}: #{JSON.generate(model_result(result))}")
     persist_transcript!
     if call.tool_name == "run_tests" && result["exit_code"].to_i != 0 && result["output"].to_s.include?("Bundler::GemNotFound")
       raise AgentError, "Tests could not start: the sandbox lacks this project's locked gems. Prepare its Rails environment using bin/ovx_prepare_rails.py with the repository path and --cwd application directory, then retry. No test failure has been diagnosed yet."
@@ -328,5 +328,13 @@ class AgentRunner
     json = JSON.generate(value)
     return value if json.bytesize <= 20_000
     { "truncated" => true, "exit_code" => value["exit_code"], "preview" => json.byteslice(0, 20_000).scrub }
+  end
+
+  def model_result(value)
+    json = JSON.generate(value)
+    return value if json.bytesize <= 8_000
+    { "truncated" => true, "exit_code" => value["exit_code"],
+      "preview" => json.byteslice(0, 6_000).scrub,
+      "next_step" => "Ask for a narrower search or use read_file with start_line and end_line to inspect the relevant portion." }
   end
 end
