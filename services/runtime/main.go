@@ -39,6 +39,7 @@ type ExecuteResponse struct {
 type CreateWorkspaceRequest struct {
 	Repository string `json:"repository"`
 	TaskID     int64  `json:"task_id"`
+	TaskToken  string `json:"task_token"`
 }
 
 type ApplyWorkspaceRequest struct {
@@ -173,7 +174,7 @@ func handleCreateWorkspace(w http.ResponseWriter, r *http.Request) {
 	}
 	var req CreateWorkspaceRequest
 	dec := json.NewDecoder(io.LimitReader(r.Body, 1<<20))
-	if err := dec.Decode(&req); err != nil || req.TaskID <= 0 {
+	if err := dec.Decode(&req); err != nil || req.TaskID <= 0 || !validTaskToken(req.TaskToken) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request"})
 		return
 	}
@@ -182,7 +183,7 @@ func handleCreateWorkspace(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
 		return
 	}
-	workspace, revision, err := createTaskWorkspace(repository, req.TaskID)
+	workspace, revision, err := createTaskWorkspace(repository, req.TaskID, req.TaskToken)
 	if err != nil {
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
 		return

@@ -41,7 +41,7 @@ Command Palette commands use the **OVX:** prefix: **Open Agent**, **Connect to L
 
 ## Troubleshooting
 
-- **Connection refused:** run `bin/ovx status` and `bin/ovx doctor`, then `bin/ovx start` from the OVX installation. Check the **OVX** output channel and `bin/ovx logs`.
+- **Connection refused:** use **Start service** or run `bin/ovx start` from the OVX installation. On macOS, this opens Docker Desktop if it stopped. Check `bin/ovx status`, the **OVX** output channel, and `bin/ovx logs` if startup still fails.
 - **Unauthorized:** import the current `OVX_API_TOKEN` again. API and runtime tokens are different; use the API token in this extension.
 - **Repository rejected:** reconnect the selected folder and save editor buffers. OVX enrolls the exact folder and supports uncommitted/non-Git projects.
 - **Run full RSpec:** type `run full rspec`, `run rspec`, `run rspec of this project`, or use **Run full RSpec in project**. OVX detects a nested `Gemfile` + `spec` folder (including `SmartGuruji/server`), prepares its locked gems, then runs `bundle exec rspec` in an isolated Docker copy. Output appears in the integrated terminal; host Ruby and the host database are not required.

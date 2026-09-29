@@ -462,3 +462,31 @@ func TestReadFileRangeReturnsBoundedLinesAndFullHash(t *testing.T) {
 		t.Fatalf("large default read was not bounded: %+v, %v", defaultRead, err)
 	}
 }
+
+func TestTaskTokenAvoidsReusedDatabaseIDForAnotherNonGitFolder(t *testing.T) {
+	first := runtimeFixture(t)
+	oldWorkspace, _, err := createTaskWorkspace(first, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second := filepath.Join(workspaceRoot, "external-nongit")
+	if err := os.Mkdir(second, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeTestFile(t, filepath.Join(second, "project.rb"), "module Project\nend\n")
+	const token = "0123456789abcdef0123456789abcdef"
+	workspace, _, err := createTaskWorkspace(second, 1, token)
+	if err != nil || workspace == oldWorkspace {
+		t.Fatalf("reused task ID collided with old workspace: %s %v", workspace, err)
+	}
+	if _, err := validateTaskWorkspace(workspace); err != nil {
+		t.Fatal(err)
+	}
+	file, err := readFile(workspace, "project.rb")
+	if err != nil || file.Content != "module Project\nend\n" {
+		t.Fatalf("non-Git folder was not snapshotted: %+v %v", file, err)
+	}
+	if _, _, err := createTaskWorkspace(second, 1, "not-a-token"); err == nil {
+		t.Fatal("invalid task token accepted")
+	}
+}

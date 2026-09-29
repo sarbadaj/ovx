@@ -3,7 +3,7 @@ module Api
     def index
       tasks = Task.order(id: :desc)
       tasks = tasks.where(repository_id: params[:repository_id]) if params[:repository_id].present?
-      render json: tasks.limit(100).as_json(except: :transcript)
+      render json: tasks.limit(100).as_json(except: %i[transcript workspace_token])
     end
 
     def show
@@ -121,7 +121,8 @@ module Api
     end
 
     def prepare_workspace!(task)
-      workspace = RuntimeClient.new.create_workspace(repository: task.repository.path, task_id: task.id)
+      task.update!(workspace_token: SecureRandom.hex(16)) if task.workspace_token.blank?
+      workspace = RuntimeClient.new.create_workspace(repository: task.repository.path, task_id: task.id, task_token: task.workspace_token)
       task.with_lock do
         # A client can cancel from history while cloning is still in flight.
         task.update!(workspace_path: workspace.fetch("workspace"), base_revision: workspace.fetch("base_revision"))
@@ -140,7 +141,7 @@ module Api
     end
 
     def task_payload(task)
-      task.reload.as_json(except: :transcript, include: {
+      task.reload.as_json(except: %i[transcript workspace_token], include: {
         agent_events: {}, tool_calls: { include: :tool_attempts }, approvals: {}
       })
     end

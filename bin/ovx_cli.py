@@ -81,6 +81,26 @@ def compose(env, *args):
     return run(["docker", "compose", "--project-name", "ovx-local", "--file", ROOT / "docker-compose.yml", *args], env)
 
 
+def ensure_docker(env):
+    def available():
+        try:
+            return subprocess.run(["docker", "info"], env=env, stdout=subprocess.DEVNULL,
+                                  stderr=subprocess.DEVNULL, timeout=5).returncode == 0
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+    if available():
+        return
+    if sys.platform == "darwin":
+        print("Starting Docker Desktop for OVX...", flush=True)
+        subprocess.run(["open", "-a", "Docker"], env=env, check=True)
+        deadline = time.monotonic() + 120
+        while time.monotonic() < deadline:
+            if available():
+                return
+            time.sleep(2)
+    raise RuntimeError("Docker is unavailable. Start Docker Desktop or Docker Engine, then retry bin/ovx start.")
+
+
 def request(env, path, data=None, method=None, base=None, token=None, timeout=30):
     url = (base or env.get("OVX_API_URL", "http://127.0.0.1:3000")).rstrip("/") + path
     headers = {"Accept": "application/json"}
@@ -193,6 +213,7 @@ def doctor(env):
 
 
 def setup(env):
+    ensure_docker(env)
     if not doctor(env):
         raise RuntimeError("Install missing prerequisites, then retry bin/ovx setup.")
     Path(env["OVX_WORKSPACE_ROOT"]).mkdir(parents=True, exist_ok=True)
@@ -219,6 +240,7 @@ def start(env):
     if parsed.scheme != "http" or parsed.hostname not in ("127.0.0.1", "localhost") or parsed.path not in ("", "/"):
         raise RuntimeError("OVX_API_URL must be a loopback HTTP URL without a path.")
     Path(env["OVX_WORKSPACE_ROOT"]).mkdir(parents=True, exist_ok=True)
+    ensure_docker(env)
     compose(env, "up", "-d", "--wait", "postgres", "redis")
     run(["docker", "image", "inspect", env.get("OVX_SANDBOX_IMAGE", "ovx-sandbox-ruby:latest")], env, stdout=subprocess.DEVNULL)
     run(["bundle", "exec", "rails", "db:prepare"], env, ROOT / "apps/api")

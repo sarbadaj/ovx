@@ -26,6 +26,10 @@ type workspaceMetadata struct {
 	Destroyed      bool                    `json:"destroyed"`
 }
 
+var taskTokenPattern = regexp.MustCompile(`^[0-9a-f]{32}$`)
+
+func validTaskToken(token string) bool { return taskTokenPattern.MatchString(token) }
+
 type workspaceState struct {
 	execution sync.Mutex
 	mu        sync.Mutex
@@ -120,7 +124,15 @@ func validateTaskWorkspace(input string) (string, error) {
 	if filepath.Dir(workspace) != taskRoot {
 		return "", errors.New("not an OVX task workspace")
 	}
-	id, err := strconv.ParseInt(filepath.Base(workspace), 10, 64)
+	name := filepath.Base(workspace)
+	idText := name
+	if parts := strings.SplitN(name, "-", 2); len(parts) == 2 {
+		if !validTaskToken(parts[1]) {
+			return "", errors.New("invalid task workspace token")
+		}
+		idText = parts[0]
+	}
+	id, err := strconv.ParseInt(idText, 10, 64)
 	if err != nil || id <= 0 {
 		return "", errors.New("invalid task workspace identifier")
 	}
@@ -169,11 +181,18 @@ func cleanRepository(repository string) error {
 	}
 	return nil
 }
-func createTaskWorkspace(repository string, taskID int64) (string, string, error) {
+func createTaskWorkspace(repository string, taskID int64, taskToken ...string) (string, string, error) {
 	lock := repositoryLock(repository)
 	lock.Lock()
 	defer lock.Unlock()
-	target := filepath.Join(workspaceRoot, ".ovx", "tasks", strconv.FormatInt(taskID, 10))
+	name := strconv.FormatInt(taskID, 10)
+	if len(taskToken) > 0 {
+		if !validTaskToken(taskToken[0]) {
+			return "", "", errors.New("invalid task workspace token")
+		}
+		name += "-" + taskToken[0]
+	}
+	target := filepath.Join(workspaceRoot, ".ovx", "tasks", name)
 	state := stateFor(target)
 	state.execution.Lock()
 	defer state.execution.Unlock()

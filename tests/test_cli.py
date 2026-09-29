@@ -59,6 +59,12 @@ class ConfigTest(unittest.TestCase):
 
 
 class ProcessTest(unittest.TestCase):
+    def test_start_launches_docker_desktop_when_engine_is_stopped(self):
+        responses = [subprocess.CompletedProcess([], 1), subprocess.CompletedProcess([], 0), subprocess.CompletedProcess([], 0)]
+        with patch.object(cli.sys, 'platform', 'darwin'), patch.object(cli.subprocess, 'run', side_effect=responses) as commands, patch.object(cli.time, 'sleep'):
+            cli.ensure_docker({'PATH': os.environ.get('PATH', '')})
+        self.assertEqual([call.args[0][:2] for call in commands.call_args_list], [['docker', 'info'], ['open', '-a'], ['docker', 'info']])
+
     def test_running_identity_does_not_depend_on_scheduler_state(self):
         responses = [subprocess.CompletedProcess([], 0, "Sun Sep 27 12:00:00 2026 S\n"),
                      subprocess.CompletedProcess([], 0, "Sun Sep 27 12:00:00 2026 R\n")]

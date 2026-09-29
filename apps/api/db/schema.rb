@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_25_000500) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_29_000100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -61,8 +61,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_25_000500) do
     t.datetime "applied_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "workspace_token"
     t.index ["repository_id"], name: "index_tasks_on_repository_id"
     t.index ["state"], name: "index_tasks_on_state"
+    t.index ["workspace_token"], name: "index_tasks_on_workspace_token", unique: true
   end
 
   create_table "tool_attempts", force: :cascade do |t|

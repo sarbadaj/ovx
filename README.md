@@ -23,7 +23,7 @@ The delivered interface is the VS Code extension and CLI. Read [implementation s
 
 ## Set up and start
 
-Run commands from the OVX checkout. Service hosts are macOS or Linux; the managed model installer targets Apple Silicon macOS. Prerequisites: Python **3.12+**, Git, Docker with Compose, Ruby 3.2+ and Bundler, Go 1.23+, ripgrep, Node.js 20+, npm, and VS Code. On Linux, install `llama-server` separately before `setup-model`; the automatic native runtime download supports Apple Silicon macOS. Start Docker Desktop/Engine first. Install VS Code’s `code` command in your shell for CLI extension installation.
+Run commands from the OVX checkout. Service hosts are macOS or Linux; the managed model installer targets Apple Silicon macOS. Prerequisites: Python **3.12+**, Git, Docker with Compose, Ruby 3.2+ and Bundler, Go 1.23+, ripgrep, Node.js 20+, npm, and VS Code. On Linux, install `llama-server` separately before `setup-model`; the automatic native runtime download supports Apple Silicon macOS. On macOS, `setup` and `start` launch Docker Desktop when needed; on Linux, start Docker Engine first. Install VS Code’s `code` command in your shell for CLI extension installation.
 
 ```sh
 ./bin/ovx doctor
@@ -67,11 +67,7 @@ The sidebar shows task history, plans, tool events, test output, pending approva
 
 Source files remain unchanged until acceptance. OVX protects unrelated edits when applying a reviewed snapshot patch; accepted edits remain uncommitted. Tokens live in VS Code SecretStorage; repository settings cannot redirect them or select a launcher. See the [extension guide](apps/vscode/README.md) for all controls and remote extension-host behavior.
 
-For projects outside OVX’s workspace directory, configure narrowly scoped paths:
-
-```dotenv
-OVX_REPOSITORY_ROOTS="/absolute/path/to/my-rails-app:/absolute/path/to/another-project"
-```
+Any local folder that the OVX service can read can be connected from VS Code, including a non-Git folder. Each new task gets a unique isolated workspace, even if the service database is recreated and task numbers repeat. A saved folder may still require project-specific test dependencies or a suitable runtime image.
 
 ## Try the Rails fixture
 

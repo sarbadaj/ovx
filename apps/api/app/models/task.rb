@@ -1,4 +1,5 @@
 class Task < ApplicationRecord
+  before_validation :assign_workspace_token, on: :create
   belongs_to :repository
   has_many :agent_events, -> { order(:id) }, dependent: :destroy
   has_many :tool_calls, -> { order(:id) }, dependent: :destroy
@@ -15,5 +16,11 @@ class Task < ApplicationRecord
 
   def terminal?
     state.in?(%w[completed failed cancelled])
+  end
+
+  private
+
+  def assign_workspace_token
+    self.workspace_token ||= SecureRandom.hex(16)
   end
 end

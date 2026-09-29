@@ -100,7 +100,7 @@ class LocalApiTest < ActionDispatch::IntegrationTest
   test "create prepares isolated workspace and enqueues job" do
     repo = make_task.repository
     runtime = Minitest::Mock.new
-    runtime.expect(:create_workspace, { "workspace" => "/tmp/new-task", "base_revision" => "cafe" }, repository: repo.path, task_id: Integer)
+    runtime.expect(:create_workspace, { "workspace" => "/tmp/new-task", "base_revision" => "cafe" }, repository: repo.path, task_id: Integer, task_token: /\A[0-9a-f]{32}\z/)
     RuntimeClient.stub(:new, runtime) do
       assert_enqueued_with(job: TaskExecutionJob) do
         post "/api/tasks", params: { repository_id: repo.id, request: "Fix the test" }, headers: auth_headers, as: :json
@@ -109,13 +109,15 @@ class LocalApiTest < ActionDispatch::IntegrationTest
     assert_response :accepted
     assert_equal "queued", parsed["state"]
     assert_equal "/tmp/new-task", parsed["workspace_path"]
+    assert_not parsed.key?("workspace_token")
+    assert_match(/\A[0-9a-f]{32}\z/, Task.find(parsed["id"]).workspace_token)
     runtime.verify
   end
 
   test "cancellation during workspace creation cannot requeue the task" do
     repo = make_task.repository
     runtime = Object.new
-    def runtime.create_workspace(repository:, task_id:)
+    def runtime.create_workspace(repository:, task_id:, task_token:)
       Task.find(task_id).update!(state: "cancelled")
       { "workspace" => "/tmp/cancelled-clone", "base_revision" => "abc" }
     end

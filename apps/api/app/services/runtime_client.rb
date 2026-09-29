@@ -17,8 +17,8 @@ class RuntimeClient
     post("repository/register", path: path)
   end
 
-  def create_workspace(repository:, task_id:)
-    post("workspace/create", repository: repository, task_id: task_id)
+  def create_workspace(repository:, task_id:, task_token:)
+    post("workspace/create", repository: repository, task_id: task_id, task_token: task_token)
   end
 
   def apply_workspace(repository:, workspace:, base_revision:, expected_patch_sha256: nil)
