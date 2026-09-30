@@ -141,9 +141,43 @@ module Api
     end
 
     def task_payload(task)
+      return sidebar_task_payload(task) if params[:view] == "sidebar"
+
       task.reload.as_json(except: %i[transcript workspace_token], include: {
         agent_events: {}, tool_calls: { include: :tool_attempts }, approvals: {}
       })
+    end
+
+    def sidebar_task_payload(task)
+      task.reload
+      approvals = task.approvals.where(status: "pending").to_a
+      calls = task.tool_calls.where(tool_name: "run_tests").order(id: :desc).limit(20).to_a
+      calls.concat(task.tool_calls.where(id: approvals.map(&:tool_call_id)).to_a)
+      {
+        id: task.id, repository_id: task.repository_id, user_request: task.user_request,
+        state: task.state, resolution: task.resolution, workspace_path: task.workspace_path,
+        base_revision: task.base_revision, plan: task.plan, final_message: task.final_message,
+        error_message: task.error_message, created_at: task.created_at, updated_at: task.updated_at,
+        agent_events: task.agent_events.order(id: :desc).limit(80).reverse.map do |event|
+          payload = event.payload || {}
+          { id: event.id, event_type: event.event_type, created_at: event.created_at,
+            payload: payload.slice("step", "tool", "state", "reason", "error", "message").transform_values { |value| value.to_s.byteslice(0, 500).to_s.scrub } }
+        end,
+        tool_calls: calls.uniq(&:id).map do |call|
+          { id: call.id, tool_name: call.tool_name, arguments: call.arguments,
+            tool_attempts: call.tool_attempts.map do |attempt|
+              result = attempt.result || {}
+              output = result["output"].is_a?(Hash) ? result["output"] : result
+              output = {} unless output.is_a?(Hash)
+              { id: attempt.id, state: attempt.state, exit_code: attempt.exit_code,
+                started_at: attempt.started_at, finished_at: attempt.finished_at,
+                error_message: attempt.error_message,
+                result: { stdout: output["stdout"].to_s.byteslice(0, 4_000).to_s.scrub,
+                          stderr: output["stderr"].to_s.byteslice(0, 4_000).to_s.scrub } }
+            end }
+        end,
+        approvals: approvals.as_json
+      }
     end
   end
 end

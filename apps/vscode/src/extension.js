@@ -251,7 +251,7 @@ class Controller {
       }
     }
     try {
-      const task = await this.client.request('POST', '/api/tasks', { repository_id: repository.id, request: taskRequest });
+      const task = await this.client.request('POST', '/api/tasks?view=sidebar', { repository_id: repository.id, request: taskRequest });
       await this.selectTask(task.id, task);
       this.view?.webview.postMessage({ type: 'submitted' });
       await this.refresh(true);
@@ -335,7 +335,7 @@ class Controller {
     this.reviewedPatchHash = null;
     this.diffError = '';
     this.diffVersion = null;
-    this.task = supplied || await this.client.request('GET', `/api/tasks/${numericId}`);
+    this.task = supplied || await this.client.request('GET', `/api/tasks/${numericId}?view=sidebar`);
     await this.context.workspaceState.update(this.historyKey(), numericId);
     await this.loadDiff();
     this.publish();
@@ -359,7 +359,7 @@ class Controller {
     const endpoint = { accept: 'apply_result', reject: 'reject_result', retry: 'retry', cancel: 'cancel' }[action];
     if (!endpoint) throw new Error('Unsupported task action.');
     const payload = action === 'accept' ? { expected_patch_sha256: this.reviewedPatchHash } : {};
-    this.task = await this.client.request('POST', `/api/tasks/${taskId}/${endpoint}`, payload);
+    this.task = await this.client.request('POST', `/api/tasks/${taskId}/${endpoint}?view=sidebar`, payload);
     this.diffVersion = null;
     if (action === 'accept') this.vscode.window.showInformationMessage('OVX changes accepted into your repository. Review and commit them with your normal Git workflow.');
     await this.refresh(true);
@@ -388,16 +388,16 @@ class Controller {
       this.history = Array.isArray(history) ? history : history.tasks || [];
       if (taskId && !this.history.some(task => task.id === taskId)) {
         // The history API returns a bounded page. A saved task can still be fetched directly.
-        const task = await this.client.request('GET', `/api/tasks/${id(taskId)}`);
+        const task = await this.client.request('GET', `/api/tasks/${id(taskId)}?view=sidebar`);
         if (epoch !== this.epoch || taskId !== this.selectedTaskId) return;
         if (task.repository_id !== repositoryId) throw new Error('Stored task belongs to a different repository. Select a task from history.');
         this.task = task;
       } else if (taskId) {
-        const task = await this.client.request('GET', `/api/tasks/${id(taskId)}`);
+        const task = await this.client.request('GET', `/api/tasks/${id(taskId)}?view=sidebar`);
         if (epoch !== this.epoch || taskId !== this.selectedTaskId) return;
         this.task = task;
       }
-      if (!this.task && this.history.length && !taskId) await this.selectTask(this.history[0].id, await this.client.request('GET', `/api/tasks/${id(this.history[0].id)}`));
+      if (!this.task && this.history.length && !taskId) await this.selectTask(this.history[0].id, await this.client.request('GET', `/api/tasks/${id(this.history[0].id)}?view=sidebar`));
       else await this.loadDiff(epoch);
       this.error = '';
     } finally { this.refreshing = false; this.publish(); }
@@ -522,18 +522,17 @@ function webviewHtml(webview, vscode, media) {
   return `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
     <link rel="stylesheet" href="${style}"><title>OVX Local Agent</title></head><body>
-    <header><div class="brand">OVX <span>LOCAL AGENT</span></div><div id="connection" role="status">Disconnected</div></header>
+    <header><div class="brand">OVX <span>LOCAL CODING AGENT</span></div><div id="connection" role="status">Disconnected</div></header>
+    <div class="workspace-bar"><div><label for="folder">Working folder</label><select id="folder" aria-label="Workspace repository"></select><p id="folderPath" class="muted"></p></div><button class="secondary small" data-message="connect">Connect</button></div>
     <div id="notice" class="notice"></div><div id="error" role="alert" class="error" hidden></div>
-    <div class="toolbar"><button data-message="connect">Connect</button><button class="secondary" data-message="newProject">New Ruby project</button><button class="secondary" data-message="startService">Start service</button><button class="secondary" data-message="setToken">Set token</button><button class="secondary" data-message="importToken">Import token</button></div>
-    <label for="folder">Repository</label><select id="folder" aria-label="Workspace repository"></select><p id="folderPath" class="muted"></p>
-    <form id="promptForm"><label for="prompt">What should OVX do?</label><textarea id="prompt" rows="5" maxlength="20000" placeholder="run full rspec — or describe a coding task" required></textarea><button id="submit" type="submit">Run task</button><span class="muted shortcut">⌘ / Ctrl + Enter</span></form>
-    <p class="muted">“run full rspec” runs project tests in your local terminal. Coding requests use the OVX agent.</p><div class="toolbar"><button class="secondary" data-message="runRSpec">Run full RSpec in project</button><button class="secondary" data-message="prepareRails">Prepare Rails environment</button></div>
+    <details id="setup"><summary>Setup and project tools</summary><div class="toolbar"><button class="secondary" data-message="newProject">New Ruby project</button><button class="secondary" data-message="startService">Start service</button><button class="secondary" data-message="setToken">Set token</button><button class="secondary" data-message="importToken">Import token</button><button class="secondary" data-message="runRSpec">Run full RSpec</button><button class="secondary" data-message="prepareRails">Prepare Rails</button></div></details>
+    <div class="history-bar"><label for="history">Conversation</label><select id="history" aria-label="Task history"><option value="">No tasks yet</option></select><button class="secondary small" data-message="refresh" title="Refresh conversation">↻</button></div>
+    <div id="emptyState"><div class="empty-mark">✦</div><h1>What are we working on?</h1><p>Ask OVX to explore, edit, or test the open folder.</p></div>
     <section id="localTest" hidden><div class="section-title"><h2>Project RSpec · local execution</h2><span id="localTestState" class="badge"></span></div><pre id="localTestCommand"></pre><p id="localTestPath" class="muted"></p><p id="localTestResult" class="preserve"></p><p class="muted">Output is in the integrated task terminal. Runs in an isolated Docker copy with project gems and a disposable test database.</p><div id="localTestActions" class="toolbar"></div></section>
-    <section><div class="section-title"><h2>Tasks</h2><button class="secondary small" data-message="refresh">Refresh</button></div><select id="history" aria-label="Task history"><option value="">No tasks yet</option></select></section>
-    <main id="task" hidden><div class="section-title"><h2 id="taskTitle"></h2><span id="taskState" class="badge"></span></div><p id="request" class="preserve"></p><p id="revision" class="muted"></p><div id="taskError" class="error" hidden></div><div id="taskActions" class="toolbar"></div>
-    <section id="approvals"></section><section id="planSection"><h2>Plan</h2><pre id="plan"></pre></section><section id="resultSection"><h2>Result</h2><p id="result" class="preserve"></p></section>
-    <section><h2>Changes</h2><p id="diffNotice" class="muted"></p><div id="files"></div></section><section><h2>Tests</h2><div id="tests"></div></section><section><h2>Timeline</h2><div id="events"></div></section></main>
-    <footer>Runs through your local OVX service. <button class="link" data-message="logs">Open logs</button></footer>
+    <main id="task" hidden><div class="message user-message"><div class="message-label">You</div><p id="request" class="preserve"></p></div><div class="message agent-message"><div class="message-heading"><div class="message-label">OVX <span id="taskTitle" class="muted"></span></div><span id="taskState" class="badge"></span></div><p id="workingMessage" class="muted"></p><div id="taskError" class="error" hidden></div><section id="resultSection"><p id="result" class="preserve"></p></section><div id="taskActions" class="toolbar"></div><section id="approvals"></section>
+    <details id="activitySection"><summary>Activity <span id="activityCount" class="muted"></span></summary><div id="events"></div></details><details id="planSection"><summary>Plan</summary><pre id="plan"></pre></details><details id="changesSection"><summary>Changes <span id="changeCount" class="muted"></span></summary><p id="diffNotice" class="muted"></p><div id="files"></div></details><details id="testsSection"><summary>Tests <span id="testCount" class="muted"></span></summary><div id="tests"></div></details><p id="revision" class="muted"></p></div></main>
+    <form id="promptForm"><label for="prompt">Message OVX</label><textarea id="prompt" rows="3" maxlength="20000" placeholder="Describe a change, ask about code, or run full rspec" required></textarea><div class="composer-actions"><span class="muted shortcut">⌘ / Ctrl + Enter to send</span><button id="submit" type="submit">Send ↗</button></div></form>
+    <footer>Local OVX service · <button class="link" data-message="logs">Open logs</button></footer>
     <script nonce="${nonce}" src="${script}"></script></body></html>`;
 }
 

@@ -97,6 +97,17 @@ class LocalApiTest < ActionDispatch::IntegrationTest
     assert_not parsed.key?("transcript")
   end
 
+  test "sidebar task response keeps progress without large tool output" do
+    task = make_task
+    task.agent_events.create!(event_type: "tool_completed", payload: { tool: "read_file", result: { content: "private source" * 10_000 } })
+    get "/api/tasks/#{task.id}", params: { view: "sidebar" }, headers: auth_headers
+    assert_response :success
+    assert_equal "read_file", parsed.dig("agent_events", 0, "payload", "tool")
+    assert_not response.body.include?("private source")
+    assert_not parsed.key?("transcript")
+    assert_operator response.body.bytesize, :<, 10_000
+  end
+
   test "create prepares isolated workspace and enqueues job" do
     repo = make_task.repository
     runtime = Minitest::Mock.new

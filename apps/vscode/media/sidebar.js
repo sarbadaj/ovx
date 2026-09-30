@@ -46,7 +46,8 @@
     const opened = new Set(Array.from(document.querySelectorAll('details[open]')).map(value => value.dataset.key));
     text('connection', state.connected ? `Connected · ${state.serviceUrl}` : `Disconnected · ${state.serviceUrl || 'local service'}`);
     element('connection').className = state.connected ? 'connected' : 'muted';
-    text('notice', !state.trusted ? 'Trust this workspace in VS Code to run OVX.' : !state.folders?.length ? 'Open a local project folder to begin.' : !state.connected ? 'Project RSpec runs directly in your terminal. For coding tasks, start OVX and connect with your API token.' : 'Coding changes are prepared in a task workspace. Explicit RSpec requests run directly in your project.');
+    text('notice', !state.trusted ? 'Trust this workspace in VS Code to run OVX.' : !state.folders?.length ? 'Open a local project folder to begin.' : !state.connected ? 'Start the local OVX service, then connect to begin.' : '');
+    show('notice', !state.trusted || !state.folders?.length || !state.connected);
     text('error', state.error);
     show('error', Boolean(state.error));
     const folders = state.folders || [];
@@ -54,7 +55,7 @@
     text('folderPath', folders.find(folder => folder.uri === state.selectedFolder)?.path);
     element('folder').disabled = state.busy || folders.length < 2;
     element('submit').disabled = state.busy || !state.trusted || !folders.length;
-    element('submit').textContent = state.busy ? 'Working…' : 'Run task';
+    element('submit').textContent = state.busy ? 'Sending…' : 'Send ↗';
     for (const control of document.querySelectorAll('[data-message]')) control.disabled = state.busy || (!state.trusted && control.dataset.message !== 'logs');
     options(element('history'), (state.history || []).map(task => ({ value: task.id, text: `#${task.id} · ${task.resolution || task.state} · ${task.user_request}` })), state.task?.id, 'No tasks yet');
     element('history').disabled = state.busy || !(state.history || []).length;
@@ -72,9 +73,11 @@
     }
     const task = state.task;
     show('task', Boolean(task));
+    show('emptyState', !task);
     if (!task) return;
-    text('taskTitle', `Task #${task.id}`);
+    text('taskTitle', `· task #${task.id}`);
     text('taskState', task.resolution || task.state.replaceAll('_', ' '));
+    text('workingMessage', task.final_message ? '' : task.error_message ? 'OVX stopped while working on this request.' : task.state === 'awaiting_approval' ? 'Waiting for your approval to continue.' : ['planning', 'executing', 'created'].includes(task.state) ? 'Working on your request… Activity updates appear below.' : '');
     text('request', task.user_request);
     text('revision', task.base_revision ? `Base commit ${task.base_revision.slice(0, 12)}` : '');
     text('taskError', task.error_message);
@@ -98,6 +101,9 @@
     show('planSection', Boolean(task.plan));
     text('result', task.final_message);
     show('resultSection', Boolean(task.final_message));
+    text('activityCount', `· ${task.events.length} recent events`);
+    text('changeCount', `· ${(state.files || []).length} files`);
+    text('testCount', `· ${task.tests.length} runs`);
     const files = element('files');
     files.replaceChildren();
     for (const file of state.files || []) {
@@ -122,7 +128,9 @@
     events.replaceChildren();
     for (const event of [...task.events].reverse()) {
       const time = event.created_at ? new Date(event.created_at).toLocaleTimeString() : '';
-      events.append(details(`event-${event.id}`, `${time}  ${event.event_type.replaceAll('_', ' ')}`, pretty(event.payload), opened));
+      const payload = Object.fromEntries(Object.entries(event.payload || {}).filter(([, value]) => value !== undefined && value !== null));
+      const subject = payload.tool || payload.command || payload.path || '';
+      events.append(details(`event-${event.id}`, `${time}  ${event.event_type.replaceAll('_', ' ')}${subject ? ` · ${subject}` : ''}`, pretty(payload), opened));
     }
   }
 

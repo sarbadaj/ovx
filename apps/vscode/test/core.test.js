@@ -41,3 +41,12 @@ test('webview projection includes approval command and tests, omits transcript',
   assert.equal(task.tests[0].command, 'bundle exec rspec');
   assert.equal(task.tests[0].exit_code, 0);
 });
+
+test('webview activity omits large tool results', () => {
+  const task = publicTask({ id: 2, state: 'executing', agent_events: [{
+    id: 10, event_type: 'tool_completed', created_at: '2026-09-30T00:00:00Z',
+    payload: { tool: 'read_file', result: { content: 'source'.repeat(10000) } }
+  }] });
+  assert.equal(task.events[0].payload.tool, 'read_file');
+  assert.equal(JSON.stringify(task.events).includes('source'), false);
+});

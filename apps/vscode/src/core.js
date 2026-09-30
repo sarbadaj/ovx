@@ -79,7 +79,21 @@ function publicTask(task) {
     final_message: task.final_message, error_message: task.error_message,
     base_revision: task.base_revision, created_at: task.created_at,
     actions: actions(task), tests: tests(task),
-    events: (task.agent_events || []).slice(-150),
+    // Tool output can contain whole source files. Keep the sidebar responsive
+    // while retaining the full event history in the service for diagnostics.
+    events: (task.agent_events || []).slice(-80).map(event => ({
+      id: event.id, event_type: event.event_type, created_at: event.created_at,
+      payload: {
+        step: event.payload?.step,
+        tool: event.payload?.tool,
+        state: event.payload?.state,
+        reason: event.payload?.reason,
+        message: event.payload?.message?.slice?.(0, 500),
+        error: event.payload?.error?.slice?.(0, 500),
+        command: event.payload?.arguments?.command,
+        path: event.payload?.arguments?.path
+      }
+    })),
     approvals: (task.approvals || []).filter(approval => approval.status === 'pending').map(approval => ({
       id: approval.id, reason: approval.reason, capabilities: approval.requested_capabilities,
       tool: (task.tool_calls || []).find(call => call.id === approval.tool_call_id)
