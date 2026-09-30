@@ -158,7 +158,7 @@ module Api
         state: task.state, resolution: task.resolution, workspace_path: task.workspace_path,
         base_revision: task.base_revision, plan: task.plan, final_message: task.final_message,
         error_message: task.error_message, created_at: task.created_at, updated_at: task.updated_at,
-        agent_events: task.agent_events.order(id: :desc).limit(80).reverse.map do |event|
+        agent_events: task.agent_events.reorder(id: :desc).limit(80).to_a.reverse.map do |event|
           payload = event.payload || {}
           { id: event.id, event_type: event.event_type, created_at: event.created_at,
             payload: payload.slice("step", "tool", "state", "reason", "error", "message").transform_values { |value| value.to_s.byteslice(0, 500).to_s.scrub } }

@@ -100,9 +100,11 @@ class LocalApiTest < ActionDispatch::IntegrationTest
   test "sidebar task response keeps progress without large tool output" do
     task = make_task
     task.agent_events.create!(event_type: "tool_completed", payload: { tool: "read_file", result: { content: "private source" * 10_000 } })
+    task.agent_events.create!(event_type: "model_generation_started", payload: { step: 2 })
     get "/api/tasks/#{task.id}", params: { view: "sidebar" }, headers: auth_headers
     assert_response :success
-    assert_equal "read_file", parsed.dig("agent_events", 0, "payload", "tool")
+    assert_equal "read_file", parsed["agent_events"][-2].dig("payload", "tool")
+    assert_equal "model_generation_started", parsed["agent_events"][-1]["event_type"]
     assert_not response.body.include?("private source")
     assert_not parsed.key?("transcript")
     assert_operator response.body.bytesize, :<, 10_000

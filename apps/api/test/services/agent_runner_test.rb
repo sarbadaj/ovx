@@ -112,6 +112,55 @@ class AgentRunnerTest < ActiveSupport::TestCase
     assert_equal ['read_file'], runtime.calls
   end
 
+  test "a failed test is not rerun unchanged after a different failed test" do
+    task = make_task
+    runtime = FakeRuntime.new(changed: false, exit_codes: [1, 1])
+    first = { type: "tool", tool: "run_tests", arguments: { command: "bundle exec rspec spec/missing_spec.rb" } }
+    second = { type: "tool", tool: "run_tests", arguments: { command: "ruby -c lib/missing.rb" } }
+    report = { type: "final", message: "Tests failed because the requested paths were missing; no files were changed." }
+    AgentRunner.new(task, model: ScriptedModel.new(first, second, first, report), runtime: runtime).run
+    assert_equal 2, runtime.calls.count("run_tests")
+    assert task.transcript.any? { |message| message["content"].include?("already failed and no code was edited") }
+    assert_equal "completed", task.reload.state
+  end
+
+  test "Minitest file is run with Ruby even if the model asks for RSpec" do
+    task = make_task
+    runtime = FakeRuntime.new(changed: false)
+    wrong = { type: "tool", tool: "run_tests", arguments: { command: "bundle exec rspec test/calculator_test.rb", cwd: "." } }
+    AgentRunner.new(task, model: ScriptedModel.new(wrong, finish), runtime: runtime).run
+    assert_equal ["ruby test/calculator_test.rb"], runtime.commands
+    assert task.transcript.any? { |message| message["content"].include?("Minitest test file") }
+  end
+
+  test "explicit instruction to keep tests unchanged blocks test edits" do
+    task = make_task
+    task.update!(user_request: "Fix calculator; do not modify tests")
+    edit = { type: "tool", tool: "apply_patch", arguments: { path: "test/calculator_test.rb", old: "5", new: "7" } }
+    runtime = FakeRuntime.new(changed: false)
+    AgentRunner.new(task, model: ScriptedModel.new(edit, finish), runtime: runtime).run
+    assert_empty runtime.calls
+    assert task.transcript.any? { |message| message["content"].include?("explicitly asked to leave tests unchanged") }
+  end
+
+  test "no-op patch is rejected before reaching the runtime" do
+    task = make_task
+    edit = { type: "tool", tool: "apply_patch", arguments: { path: "lib/calculator.rb", old: "a - b", new: "a - b" } }
+    runtime = FakeRuntime.new(changed: false)
+    AgentRunner.new(task, model: ScriptedModel.new(edit, finish), runtime: runtime).run
+    assert_empty runtime.calls
+    assert task.transcript.any? { |message| message["content"].include?("patch makes no change") }
+  end
+
+  test "copied final example is rejected before completion" do
+    task = make_task
+    copied = { type: "final", message: "result, validation performed, and remaining risk" }
+    actual = { type: "final", message: "I found the project entrypoint in README.md; no files were changed." }
+    AgentRunner.new(task, model: ScriptedModel.new(copied, actual), runtime: FakeRuntime.new(changed: false)).run
+    assert_equal actual[:message], task.reload.final_message
+    assert task.transcript.any? { |message| message["content"].include?("example text, not an answer") }
+  end
+
   test "ambiguous patch failure tells the model to use unique context" do
     task = make_task
     runtime = FakeRuntime.new(changed: false)
@@ -166,7 +215,7 @@ class AgentRunnerTest < ActiveSupport::TestCase
     task = make_task
     runtime = FakeRuntime.new(exit_codes: [0, 1, 0])
     model = ScriptedModel.new(tool("apply_patch"), tool("run_tests"), tool("run_tests"), tool("git_diff"), finish,
-      tool("run_tests"), tool("git_diff"), finish)
+      tool("apply_patch"), tool("run_tests"), tool("git_diff"), finish)
     AgentRunner.new(task, model: model, runtime: runtime).run
     assert_equal "completed", task.reload.state
     assert_equal 3, runtime.calls.count("run_tests")
@@ -198,12 +247,14 @@ class AgentRunnerTest < ActiveSupport::TestCase
     assert_equal "completed", task.reload.state
   end
 
-  test "a failed test cannot be declared completed just because no files changed" do
+  test "a failed test with no edits requires an honest failure report" do
     task = make_task
-    runtime = FakeRuntime.new(changed: false, exit_codes: [1, 0])
-    model = ScriptedModel.new(tool('run_tests'), finish, tool('run_tests'), tool('git_diff'), finish)
+    runtime = FakeRuntime.new(changed: false, exit_codes: [1])
+    report = { type: "final", message: "The test failed; I could not fix it and made no code changes." }
+    model = ScriptedModel.new(tool('run_tests'), finish, report)
     AgentRunner.new(task, model: model, runtime: runtime).run
-    assert_equal 2, runtime.calls.count('run_tests')
+    assert_equal 1, runtime.calls.count('run_tests')
+    assert task.transcript.any? { |message| message['content'].include?('clearly report that failure') }
     assert_equal 'completed', task.reload.state
   end
 

@@ -40,9 +40,9 @@ class AgentRunner
     {"type":"tool","tool":"git_status","arguments":{}}
     {"type":"tool","tool":"git_diff","arguments":{}}
     {"type":"tool","tool":"git_log","arguments":{}}
-    {"type":"final","message":"result, validation performed, and remaining risk"}
+    {"type":"final","message":"Describe the actual result using file names and observed test outcomes."}
     Rules:
-    - Keep every response compact: one action only, short plan steps, and concise final messages. Never include reasoning outside the JSON object.
+    - Keep every response compact: one action only, short plan steps, and concise final messages. Never copy example text into a final answer. Never include reasoning outside the JSON object.
     - Paths must be repository-relative; do not access secrets or OVX metadata.
     - read_file returns at most the first 200 lines by default. For other lines, provide start_line and end_line (at most 200 lines per call). The returned SHA256 still covers the complete file.
     - run_command and delete_file require human approval. Approval never bypasses runtime restrictions.
@@ -121,9 +121,15 @@ class AgentRunner
         return @task if handle_tool(action)
       when "final"
         append("assistant", JSON.generate(action))
-        if completion_requirements_met?
-          message = action["message"].to_s.strip
-          raise AgentError, "final message is empty" if message.empty?
+        message = action["message"].to_s.strip
+        raise AgentError, "final message is empty" if message.empty?
+        if message.match?(/\A(?:result, validation performed, and remaining risk|describe the actual result using file names and observed test outcomes\.?|<your specific answer here>)\z/i)
+          reject_repeated_action!("final", { "message" => message })
+          append("user", "That is example text, not an answer. State what you found or changed, name relevant files, and report actual test outcomes. If no changes were made, say so plainly.")
+          persist_transcript!
+          next
+        end
+        if completion_requirements_met?(message)
           synchronized do
             @task.update!(state: "completed", final_message: message, transcript: @messages)
             event("task_completed", message: message)
@@ -181,6 +187,12 @@ class AgentRunner
     raise AgentError, "tool not allowed: #{tool}" unless ALLOWED_TOOLS.include?(tool)
     raise AgentError, "tool arguments must be an object" unless action.fetch("arguments", {}).is_a?(Hash)
     arguments = action.fetch("arguments", {})
+    arguments = arguments.except("cwd") if arguments["cwd"] == "."
+    if tool == "run_tests" && (match = arguments["command"].to_s.match(/\Abundle exec rspec (test\/[A-Za-z0-9_\/-]+_test\.rb)\z/))
+      arguments = arguments.merge("command" => "ruby #{match[1]}")
+      append("user", "That path names a Minitest test file. OVX is running it with ruby instead of RSpec.")
+    end
+    action = action.merge("arguments" => arguments)
     if tool == "run_tests" && arguments["command"].to_s.start_with?("ruby -c ")
       changed_tests = @runtime.diff_workspace(workspace: @task.workspace_path, base_revision: @task.base_revision).fetch("files", []).filter_map { |file| file["path"] if file["path"].to_s.match?(%r{\Atest/[A-Za-z0-9_/-]+_test\.rb\z}) }
       if changed_tests.one?
@@ -200,7 +212,32 @@ class AgentRunner
       persist_transcript!
       return false
     end
+    if tool == "apply_patch" && arguments["old"].is_a?(String) && arguments["old"] == arguments["new"]
+      reject_repeated_action!(tool, arguments)
+      append("user", "That patch makes no change. Read the implementation and propose a real code fix instead.")
+      persist_transcript!
+      return false
+    end
+    if %w[apply_patch create_file delete_file].include?(tool) && protected_test_path?(arguments["path"])
+      reject_repeated_action!(tool, arguments)
+      append("user", "The user explicitly asked to leave tests unchanged. Edit the implementation, then run the existing tests.")
+      persist_transcript!
+      return false
+    end
     previous = @task.tool_calls.where(tool_name: tool).last
+    if tool == "run_tests"
+      latest_edit_id = @task.tool_calls.where(tool_name: MUTATING_TOOLS, state: "completed").maximum(:id).to_i
+      repeated_failure = @task.tool_calls.where(tool_name: tool).where("id > ?", latest_edit_id).order(id: :desc).limit(100).find do |call|
+        attempt = call.tool_attempts.last
+        call.arguments == arguments && attempt && attempt.exit_code && attempt.exit_code != 0
+      end
+      if repeated_failure
+        reject_repeated_action!(tool, arguments)
+        append("user", "This exact test command already failed and no code was edited since. Inspect that failure; use the correct project path, make a relevant edit, or report the failure. Do not rerun it unchanged.")
+        persist_transcript!
+        return false
+      end
+    end
     if OBSERVATION_TOOLS.include?(tool)
       latest_edit_id = @task.tool_calls.where(tool_name: MUTATING_TOOLS, state: "completed").maximum(:id).to_i
       repeated = @task.tool_calls.where(tool_name: tool).where("id > ?", latest_edit_id).order(id: :desc).limit(100).any? { |call| call.arguments == arguments && call.state == "completed" }
@@ -274,13 +311,19 @@ class AgentRunner
     persist_transcript!
   end
 
-  def completion_requirements_met?
+  def completion_requirements_met?(message)
     transition!(state: "validating")
     return validation_needed!("Resolve pending approvals before finishing.") if @task.approvals.where(status: "pending").exists?
     mutation = @task.tool_calls.where(tool_name: MUTATING_TOOLS, state: %w[completed failed unknown]).last
     changes = @runtime.diff_workspace(workspace: @task.workspace_path, base_revision: @task.base_revision)
     test = @task.tool_calls.where(tool_name: "run_tests").last
-    return true if changes.fetch("files", []).empty? && !mutation && !test
+    if changes.fetch("files", []).empty?
+      attempt = test&.tool_attempts&.last
+      if attempt && attempt.exit_code != 0 && !message.match?(/fail|error|unable|could not|did not|missing|not run/i)
+        return validation_needed!("The last test failed. With no code changes, either fix the cause or clearly report that failure in your final answer.")
+      end
+      return true
+    end
 
     test_files_changed = changes.fetch("files", []).any? { |file| file.fetch("path", "").match?(%r{(?:\A|/)(?:test|spec)/}) }
     if test_files_changed && test&.arguments&.fetch("command", "").to_s.start_with?("ruby -c ")
@@ -296,6 +339,12 @@ class AgentRunner
       return validation_needed!("Inspect git_diff after the latest edit and test run before finishing.")
     end
     true
+  end
+
+  def protected_test_path?(path)
+    return false unless @task.user_request.match?(/(?:do not|don't|without)\s+(?:modify|edit|change|touch)\s+(?:the\s+)?(?:tests?|specs?)\b|keep\s+(?:the\s+)?(?:tests?|specs?)\s+unchanged/i)
+
+    path.to_s.match?(%r{(?:\A|/)(?:test|spec)/|(?:_test|_spec)\.[^.\/]+\z})
   end
 
   def validation_needed!(message)
