@@ -21,6 +21,10 @@ class ModelClient
     @timeout = Integer(ENV.fetch("MODEL_TIMEOUT_SECONDS", "180"))
     @max_tokens = Integer(ENV.fetch("MODEL_MAX_TOKENS", "4096"))
     @context_bytes = Integer(ENV.fetch("MODEL_CONTEXT_BYTES", "30000"))
+    @reasoning_effort = ENV["MODEL_REASONING_EFFORT"].to_s.strip
+    if @reasoning_effort.present? && !%w[none low high max].include?(@reasoning_effort)
+      raise ModelError, "MODEL_REASONING_EFFORT must be none, low, high or max"
+    end
   end
 
   def chat(messages)
@@ -31,6 +35,7 @@ class ModelClient
     req["Authorization"] = "Bearer #{@api_key}" unless @api_key.empty?
     payload = { model: @model, messages: bounded_messages(messages), temperature: 0.1, max_tokens: @max_tokens }
     payload[:response_format] = { type: "json_object" } if @json_mode
+    payload[:reasoning_effort] = @reasoning_effort if @reasoning_effort.present?
     req.body = JSON.generate(payload)
 
     http = Net::HTTP.new(uri.host, uri.port)

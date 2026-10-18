@@ -1,6 +1,7 @@
 """Standard-library CLI and process manager for the local OVX installation."""
 import argparse
 import fcntl
+import getpass
 import json
 import os
 import tempfile
@@ -123,6 +124,86 @@ def request(env, path, data=None, method=None, base=None, token=None, timeout=30
         raise RuntimeError(f"HTTP {error.code}: {detail}") from error
     except (urllib.error.URLError, TimeoutError) as error:
         raise RuntimeError(f"Cannot connect to {url}: {error}") from error
+
+
+def configure_remote_model(args):
+    parser = argparse.ArgumentParser(prog="bin/ovx configure-remote-model")
+    parser.add_argument("--base-url", default="https://api.deepseek.com")
+    parser.add_argument("--model", default="deepseek-v4-pro")
+    parser.add_argument("--key-env", default="DEEPSEEK_API_KEY")
+    parser.add_argument("--reasoning-effort", choices=["none", "low", "high", "max"])
+    options = parser.parse_args(args)
+    base = options.base_url.rstrip("/")
+    parsed = urllib.parse.urlsplit(base)
+    if (parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or
+            parsed.query or parsed.fragment or len(base) > 2048):
+        raise RuntimeError("Remote model URL must be HTTPS without credentials, query, or fragment.")
+    if not re.fullmatch(r"[A-Za-z0-9._:/-]{1,128}", options.model):
+        raise RuntimeError("Invalid remote model ID.")
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", options.key_env):
+        raise RuntimeError("Invalid API key environment variable name.")
+    key = os.environ.get(options.key_env) or getpass.getpass("Remote model API key (hidden): ")
+    if not key or len(key) > 8192 or any(character in key for character in "\r\n\0"):
+        raise RuntimeError("Enter a nonempty, single-line API key.")
+    probe_remote_model(base, options.model, key)
+    effort = options.reasoning_effort if options.reasoning_effort is not None else ("high" if parsed.hostname == "api.deepseek.com" and options.model == "deepseek-v4-pro" else "")
+    values = {
+        "MODEL_PROVIDER": "openai_compatible", "MODEL_PATH": "", "MODEL_BASE_URL": base,
+        "MODEL_NAME": options.model, "MODEL_API_KEY": key, "MODEL_JSON_MODE": "true",
+        "MODEL_TIMEOUT_SECONDS": "600", "MODEL_CONTEXT_BYTES": "30000",
+        "MODEL_MAX_TOKENS": "16384", "MODEL_REASONING_EFFORT": effort
+    }
+    path = ROOT / ".env"
+    original = path.read_text()
+    configured = original
+    for name, value in values.items():
+        line = name + "=" + shlex.quote(value)
+        pattern = r"^" + re.escape(name) + r"=.*$"
+        configured = re.sub(pattern, lambda _: line, configured, flags=re.M) if re.search(pattern, configured, re.M) else configured.rstrip("\n") + "\n" + line + "\n"
+    write_private_env(path, configured)
+    try:
+        dispatch("restart", [], load_env())
+    except Exception:
+        write_private_env(path, original)
+        try:
+            dispatch("restart", [], load_env())
+        except Exception:
+            pass
+        raise
+    print(f"OVX now uses remote model {options.model} at {base}. API key stored only in the private local .env.")
+
+
+def write_private_env(path, content):
+    with tempfile.NamedTemporaryFile("w", dir=path.parent, prefix=".ovx-env-", delete=False) as temporary:
+        os.fchmod(temporary.fileno(), 0o600)
+        temporary.write(content)
+        name = temporary.name
+    os.replace(name, path)
+
+
+def probe_remote_model(base, model, key):
+    payload = {"model": model, "messages": [
+        {"role": "system", "content": "Return one JSON object."},
+        {"role": "user", "content": "Return {\"type\":\"final\",\"message\":\"ready\"} as JSON."}
+    ], "response_format": {"type": "json_object"}, "max_tokens": 2048}
+    url = base + "/chat/completions"
+    request = urllib.request.Request(url, json.dumps(payload).encode(), {
+        "Authorization": "Bearer " + key, "Content-Type": "application/json", "Accept": "application/json"}, method="POST")
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *_):
+            return None
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
+    try:
+        with opener.open(request, timeout=120) as response:
+            result = json.load(response)
+        choice = result["choices"][0]
+        action = json.loads(choice["message"]["content"])
+        if choice.get("finish_reason") == "length" or action.get("type") != "final":
+            raise RuntimeError("Remote model did not complete the JSON probe.")
+    except urllib.error.HTTPError as error:
+        raise RuntimeError(f"Remote model probe failed with HTTP {error.code}; configuration was not changed.") from error
+    except (urllib.error.URLError, TimeoutError, KeyError, IndexError, ValueError, TypeError) as error:
+        raise RuntimeError(f"Remote model probe failed ({type(error).__name__}); configuration was not changed.") from error
 
 
 def identity(pid):
@@ -419,6 +500,8 @@ def dispatch(command, args, env):
         print(demo(env, fixture))
     elif command == "smoke":
         smoke(env)
+    elif command == "configure-remote-model":
+        configure_remote_model(args)
     elif command == "run-rspec":
         run_rspec(env, args)
     elif command == "test":
@@ -468,13 +551,13 @@ def dispatch(command, args, env):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="OVX local coding agent and VS Code service")
-    parser.add_argument("command", choices=["init", "setup", "setup-model", "start", "stop", "restart", "status", "doctor", "logs", "repos", "add-repo", "task", "show", "events", "diff", "wait", "approvals", "approve", "deny", "cancel", "retry", "workspace", "apply", "reject", "demo", "smoke", "run-rspec", "test", "package-extension", "install-extension"])
+    parser.add_argument("command", choices=["init", "setup", "setup-model", "configure-remote-model", "start", "stop", "restart", "status", "doctor", "logs", "repos", "add-repo", "task", "show", "events", "diff", "wait", "approvals", "approve", "deny", "cancel", "retry", "workspace", "apply", "reject", "demo", "smoke", "run-rspec", "test", "package-extension", "install-extension"])
     parser.add_argument("args", nargs=argparse.REMAINDER)
     options = parser.parse_args(argv)
     try:
         initialize()
         env = load_env()
-        if options.command in ("setup", "start", "stop", "restart"):
+        if options.command in ("setup", "configure-remote-model", "start", "stop", "restart"):
             with (STATE / "run/manager.lock").open("w") as lock:
                 try:
                     fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)

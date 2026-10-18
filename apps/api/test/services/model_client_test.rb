@@ -41,6 +41,18 @@ class ModelClientTest < ActiveSupport::TestCase
     end
   end
 
+  test "remote reasoning effort is sent only when configured" do
+    previous = ENV["MODEL_REASONING_EFFORT"]
+    ENV["MODEL_REASONING_EFFORT"] = "high"
+    http = FakeHTTP.new({ "choices" => [{ "message" => { "content" => '{"type":"final","message":"done"}' } }] })
+    Net::HTTP.stub(:new, http) { ModelClient.new.chat([{ "role" => "user", "content" => "Fix" }]) }
+    assert_equal "high", http.sent["reasoning_effort"]
+    ENV["MODEL_REASONING_EFFORT"] = "invalid"
+    assert_raises(ModelClient::ModelError) { ModelClient.new }
+  ensure
+    ENV["MODEL_REASONING_EFFORT"] = previous
+  end
+
   test "missing choices are rejected with a useful error" do
     Net::HTTP.stub(:new, FakeHTTP.new({ "result" => [] })) do
       assert_raises(ModelClient::ModelError) { ModelClient.new.chat([]) }
